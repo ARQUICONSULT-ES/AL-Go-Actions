@@ -434,6 +434,9 @@ try {
         -keepContainer `
         -PublishBcContainerApp { Write-Host "Publish override" }
 
+    Write-Host $env:computername
+    Get-ChildItem 'C:\Program Files\nodejs\'
+
     Write-Host "Script path: $PSScriptRoot"
     Write-Host "Project path: $projectPath"
     # Generate translated XLIFF files
