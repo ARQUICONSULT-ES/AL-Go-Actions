@@ -387,6 +387,48 @@ try {
         }
     }
 
+    Write-Host "Invoke Run-AlPipeline with buildmode $buildMode"
+    Run-AlPipeline @runAlPipelineParams `
+        -accept_insiderEula `
+        -pipelinename $workflowName `
+        -containerName $containerName `
+        -imageName $imageName `
+        -bcAuthContext $authContext `
+        -environment $environmentName `
+        -artifact $settings.artifact.replace('{INSIDERSASTOKEN}', '') `
+        -vsixFile $settings.vsixFile `
+        -companyName $settings.companyName `
+        -memoryLimit $settings.memoryLimit `
+        -baseFolder $projectPath `
+        -sharedFolder $sharedFolder `
+        -licenseFile $licenseFileUrl `
+        -installApps $installApps `
+        -installTestApps $installTestApps `
+        -installOnlyReferencedApps:$settings.installOnlyReferencedApps `
+        -generateDependencyArtifact:$settings.generateDependencyArtifact `
+        -updateDependencies:$settings.updateDependencies `
+        -previousApps $previousApps `
+        -appFolders $settings.appFolders `
+        -testFolders $settings.testFolders `
+        -bcptTestFolders $settings.bcptTestFolders `
+        -buildOutputFile $buildOutputFile `
+        -containerEventLogFile $containerEventLogFile `
+        -testResultsFile $testResultsFile `
+        -testResultsFormat 'JUnit' `
+        -customCodeCops $settings.customCodeCops `
+        -gitHubActions `
+        -failOn $settings.failOn `
+        -treatTestFailuresAsWarnings:$settings.treatTestFailuresAsWarnings `
+        -rulesetFile $settings.rulesetFile `
+        -enableExternalRulesets:$settings.enableExternalRulesets `
+        -appSourceCopMandatoryAffixes $settings.appSourceCopMandatoryAffixes `
+        -additionalCountries $additionalCountries `
+        -obsoleteTagMinAllowedMajorMinor $settings.obsoleteTagMinAllowedMajorMinor `
+        -buildArtifactFolder $buildArtifactFolder `
+        -CreateRuntimePackages:$CreateRuntimePackages `
+        -appBuild $appBuild -appRevision $appRevision `
+        -uninstallRemovedApps
+
     # Create docker credential
     # $pipelineDockerCredential = (New-Object pscredential 'admin', (ConvertTo-SecureString -String (Get-RandomPassword -PasswordLength 16) -AsPlainText -Force))
 
