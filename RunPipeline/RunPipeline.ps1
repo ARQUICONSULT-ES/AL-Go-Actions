@@ -388,96 +388,96 @@ try {
     }
 
     # Create docker credential
-    $pipelineDockerCredential = (New-Object pscredential 'admin', (ConvertTo-SecureString -String (Get-RandomPassword -PasswordLength 16) -AsPlainText -Force))
+    # $pipelineDockerCredential = (New-Object pscredential 'admin', (ConvertTo-SecureString -String (Get-RandomPassword -PasswordLength 16) -AsPlainText -Force))
 
     # Compile first time to generate en-US xliff
-    Write-Host "Invoke Run-AlPipeline for original XLIFF generation"
-    Run-AlPipeline @runAlPipelineParams `
-        -accept_insiderEula `
-        -pipelinename $workflowName `
-        -containerName $containerName `
-        -credential $pipelineDockerCredential `
-        -imageName $imageName `
-        -bcAuthContext $authContext `
-        -environment $environmentName `
-        -artifact $settings.artifact.replace('{INSIDERSASTOKEN}', '') `
-        -vsixFile $settings.vsixFile `
-        -companyName $settings.companyName `
-        -memoryLimit $settings.memoryLimit `
-        -baseFolder $projectPath `
-        -sharedFolder $sharedFolder `
-        -installApps $installApps `
-        -installTestApps $installTestApps `
-        -installOnlyReferencedApps:$settings.installOnlyReferencedApps `
-        -generateDependencyArtifact:$settings.generateDependencyArtifact `
-        -updateDependencies:$settings.updateDependencies `
-        -appFolders $settings.appFolders `
-        -testFolders $settings.testFolders `
-        -bcptTestFolders $settings.bcptTestFolders `
-        -buildOutputFile $buildOutputFile `
-        -containerEventLogFile $containerEventLogFile `
-        -testResultsFile $testResultsFile `
-        -testResultsFormat 'JUnit' `
-        -customCodeCops $settings.customCodeCops `
-        -gitHubActions `
-        -failOn $settings.failOn `
-        -treatTestFailuresAsWarnings:$settings.treatTestFailuresAsWarnings `
-        -rulesetFile $settings.rulesetFile `
-        -enableExternalRulesets:$settings.enableExternalRulesets `
-        -appSourceCopMandatoryAffixes $settings.appSourceCopMandatoryAffixes `
-        -additionalCountries $additionalCountries `
-        -obsoleteTagMinAllowedMajorMinor $settings.obsoleteTagMinAllowedMajorMinor `
-        -appBuild $appBuild -appRevision $appRevision `
-        -uninstallRemovedApps `
-        -keepContainer `
-        -PublishBcContainerApp { Write-Host "Publish override" }
+    # Write-Host "Invoke Run-AlPipeline for original XLIFF generation"
+    # Run-AlPipeline @runAlPipelineParams `
+    #     -accept_insiderEula `
+    #     -pipelinename $workflowName `
+    #     -containerName $containerName `
+    #     -credential $pipelineDockerCredential `
+    #     -imageName $imageName `
+    #     -bcAuthContext $authContext `
+    #     -environment $environmentName `
+    #     -artifact $settings.artifact.replace('{INSIDERSASTOKEN}', '') `
+    #     -vsixFile $settings.vsixFile `
+    #     -companyName $settings.companyName `
+    #     -memoryLimit $settings.memoryLimit `
+    #     -baseFolder $projectPath `
+    #     -sharedFolder $sharedFolder `
+    #     -installApps $installApps `
+    #     -installTestApps $installTestApps `
+    #     -installOnlyReferencedApps:$settings.installOnlyReferencedApps `
+    #     -generateDependencyArtifact:$settings.generateDependencyArtifact `
+    #     -updateDependencies:$settings.updateDependencies `
+    #     -appFolders $settings.appFolders `
+    #     -testFolders $settings.testFolders `
+    #     -bcptTestFolders $settings.bcptTestFolders `
+    #     -buildOutputFile $buildOutputFile `
+    #     -containerEventLogFile $containerEventLogFile `
+    #     -testResultsFile $testResultsFile `
+    #     -testResultsFormat 'JUnit' `
+    #     -customCodeCops $settings.customCodeCops `
+    #     -gitHubActions `
+    #     -failOn $settings.failOn `
+    #     -treatTestFailuresAsWarnings:$settings.treatTestFailuresAsWarnings `
+    #     -rulesetFile $settings.rulesetFile `
+    #     -enableExternalRulesets:$settings.enableExternalRulesets `
+    #     -appSourceCopMandatoryAffixes $settings.appSourceCopMandatoryAffixes `
+    #     -additionalCountries $additionalCountries `
+    #     -obsoleteTagMinAllowedMajorMinor $settings.obsoleteTagMinAllowedMajorMinor `
+    #     -appBuild $appBuild -appRevision $appRevision `
+    #     -uninstallRemovedApps `
+    #     -keepContainer `
+    #     -PublishBcContainerApp { Write-Host "Publish override" }
 
-    Write-Host "Script path: $PSScriptRoot"
-    Write-Host "Project path: $projectPath"
-    # Generate translated XLIFF files
-    $CreateTranslationScriptPath = (Join-Path -Path $PSScriptRoot -ChildPath "..\CreateXLIFFTranslationFile\GenerateTranslationXLIFF.js" -Resolve)
-    Write-Host "Translation script path: $CreateTranslationScriptPath"
-    Write-Host "Generating Translated XLIFF files"
-    & 'C:\Program Files\nodejs\node.exe' $CreateTranslationScriptPath $projectPath
+    # Write-Host "Script path: $PSScriptRoot"
+    # Write-Host "Project path: $projectPath"
+    # # Generate translated XLIFF files
+    # $CreateTranslationScriptPath = (Join-Path -Path $PSScriptRoot -ChildPath "..\CreateXLIFFTranslationFile\GenerateTranslationXLIFF.js" -Resolve)
+    # Write-Host "Translation script path: $CreateTranslationScriptPath"
+    # Write-Host "Generating Translated XLIFF files"
+    # & 'C:\Program Files\nodejs\node.exe' $CreateTranslationScriptPath $projectPath
 
-    Write-Host "Invoke Run-AlPipeline with buildmode $buildMode"
-    Run-AlPipeline @runAlPipelineParams `
-        -accept_insiderEula `
-        -pipelinename $workflowName `
-        -containerName $containerName `
-        -credential $pipelineDockerCredential `
-        -reUseContainer `
-        -imageName $imageName `
-        -bcAuthContext $authContext `
-        -environment $environmentName `
-        -artifact $settings.artifact.replace('{INSIDERSASTOKEN}', '') `
-        -vsixFile $settings.vsixFile `
-        -companyName $settings.companyName `
-        -memoryLimit $settings.memoryLimit `
-        -baseFolder $projectPath `
-        -sharedFolder $sharedFolder `
-        -installTestApps $installTestApps `
-        -installOnlyReferencedApps:$settings.installOnlyReferencedApps `
-        -appFolders $settings.appFolders `
-        -testFolders $settings.testFolders `
-        -bcptTestFolders $settings.bcptTestFolders `
-        -buildOutputFile $buildOutputFile `
-        -containerEventLogFile $containerEventLogFile `
-        -testResultsFile $testResultsFile `
-        -testResultsFormat 'JUnit' `
-        -customCodeCops $settings.customCodeCops `
-        -gitHubActions `
-        -failOn $settings.failOn `
-        -treatTestFailuresAsWarnings:$settings.treatTestFailuresAsWarnings `
-        -rulesetFile $settings.rulesetFile `
-        -enableExternalRulesets:$settings.enableExternalRulesets `
-        -appSourceCopMandatoryAffixes $settings.appSourceCopMandatoryAffixes `
-        -additionalCountries $additionalCountries `
-        -obsoleteTagMinAllowedMajorMinor $settings.obsoleteTagMinAllowedMajorMinor `
-        -buildArtifactFolder $buildArtifactFolder `
-        -CreateRuntimePackages:$CreateRuntimePackages `
-        -appBuild $appBuild -appRevision $appRevision `
-        -uninstallRemovedApps
+    # Write-Host "Invoke Run-AlPipeline with buildmode $buildMode"
+    # Run-AlPipeline @runAlPipelineParams `
+    #     -accept_insiderEula `
+    #     -pipelinename $workflowName `
+    #     -containerName $containerName `
+    #     -credential $pipelineDockerCredential `
+    #     -reUseContainer `
+    #     -imageName $imageName `
+    #     -bcAuthContext $authContext `
+    #     -environment $environmentName `
+    #     -artifact $settings.artifact.replace('{INSIDERSASTOKEN}', '') `
+    #     -vsixFile $settings.vsixFile `
+    #     -companyName $settings.companyName `
+    #     -memoryLimit $settings.memoryLimit `
+    #     -baseFolder $projectPath `
+    #     -sharedFolder $sharedFolder `
+    #     -installTestApps $installTestApps `
+    #     -installOnlyReferencedApps:$settings.installOnlyReferencedApps `
+    #     -appFolders $settings.appFolders `
+    #     -testFolders $settings.testFolders `
+    #     -bcptTestFolders $settings.bcptTestFolders `
+    #     -buildOutputFile $buildOutputFile `
+    #     -containerEventLogFile $containerEventLogFile `
+    #     -testResultsFile $testResultsFile `
+    #     -testResultsFormat 'JUnit' `
+    #     -customCodeCops $settings.customCodeCops `
+    #     -gitHubActions `
+    #     -failOn $settings.failOn `
+    #     -treatTestFailuresAsWarnings:$settings.treatTestFailuresAsWarnings `
+    #     -rulesetFile $settings.rulesetFile `
+    #     -enableExternalRulesets:$settings.enableExternalRulesets `
+    #     -appSourceCopMandatoryAffixes $settings.appSourceCopMandatoryAffixes `
+    #     -additionalCountries $additionalCountries `
+    #     -obsoleteTagMinAllowedMajorMinor $settings.obsoleteTagMinAllowedMajorMinor `
+    #     -buildArtifactFolder $buildArtifactFolder `
+    #     -CreateRuntimePackages:$CreateRuntimePackages `
+    #     -appBuild $appBuild -appRevision $appRevision `
+    #     -uninstallRemovedApps
 
     if ($containerBaseFolder) {
 
