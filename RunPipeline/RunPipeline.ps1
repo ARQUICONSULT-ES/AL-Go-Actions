@@ -387,7 +387,10 @@ try {
         }
     }
 
-    Write-Host "Invoke Run-AlPipeline with buildmode $buildMode"
+    # Create docker credential
+    $pipelineDockerCredential = (New-Object pscredential 'admin', (ConvertTo-SecureString -String (Get-RandomPassword -PasswordLength 16) -AsPlainText -Force))
+
+    Write-Host "First: Run-AlPipeline with buildmode $buildMode"
     Run-AlPipeline @runAlPipelineParams `
         -accept_insiderEula `
         -pipelinename $workflowName `
@@ -395,26 +398,26 @@ try {
         -imageName $imageName `
         -bcAuthContext $authContext `
         -environment $environmentName `
-        -artifact $settings.artifact.replace('{INSIDERSASTOKEN}', '') `
+        # -artifact $settings.artifact.replace('{INSIDERSASTOKEN}', '') `
         -vsixFile $settings.vsixFile `
         -companyName $settings.companyName `
         -memoryLimit $settings.memoryLimit `
         -baseFolder $projectPath `
         -sharedFolder $sharedFolder `
         -licenseFile $licenseFileUrl `
-        -installApps $installApps `
-        -installTestApps $installTestApps `
-        -installOnlyReferencedApps:$settings.installOnlyReferencedApps `
-        -generateDependencyArtifact:$settings.generateDependencyArtifact `
-        -updateDependencies:$settings.updateDependencies `
-        -previousApps $previousApps `
-        -appFolders $settings.appFolders `
-        -testFolders $settings.testFolders `
-        -bcptTestFolders $settings.bcptTestFolders `
+        # -installApps $installApps `
+        # -installTestApps $installTestApps `
+        # -installOnlyReferencedApps:$settings.installOnlyReferencedApps `
+        # -generateDependencyArtifact:$settings.generateDependencyArtifact `
+        # -updateDependencies:$settings.updateDependencies `
+        # -previousApps $previousApps `
+        # -appFolders $settings.appFolders `
+        # -testFolders $settings.testFolders `
+        # -bcptTestFolders $settings.bcptTestFolders `
         -buildOutputFile $buildOutputFile `
         -containerEventLogFile $containerEventLogFile `
-        -testResultsFile $testResultsFile `
-        -testResultsFormat 'JUnit' `
+        # -testResultsFile $testResultsFile `
+        # -testResultsFormat 'JUnit' `
         -customCodeCops $settings.customCodeCops `
         -gitHubActions `
         -failOn $settings.failOn `
@@ -424,13 +427,13 @@ try {
         -appSourceCopMandatoryAffixes $settings.appSourceCopMandatoryAffixes `
         -additionalCountries $additionalCountries `
         -obsoleteTagMinAllowedMajorMinor $settings.obsoleteTagMinAllowedMajorMinor `
-        -buildArtifactFolder $buildArtifactFolder `
-        -CreateRuntimePackages:$CreateRuntimePackages `
+        # -buildArtifactFolder $buildArtifactFolder `
+        # -CreateRuntimePackages:$CreateRuntimePackages `
         -appBuild $appBuild -appRevision $appRevision `
-        -uninstallRemovedApps
-
-    # Create docker credential
-    # $pipelineDockerCredential = (New-Object pscredential 'admin', (ConvertTo-SecureString -String (Get-RandomPassword -PasswordLength 16) -AsPlainText -Force))
+        -uninstallRemovedApps `
+        -credential $pipelineDockerCredential `
+        -keepContainer `
+        -PublishBcContainerApp { Write-Host "Publish override" }
 
     # Compile first time to generate en-US xliff
     # Write-Host "Invoke Run-AlPipeline for original XLIFF generation"
@@ -474,13 +477,13 @@ try {
     #     -keepContainer `
     #     -PublishBcContainerApp { Write-Host "Publish override" }
 
-    # Write-Host "Script path: $PSScriptRoot"
-    # Write-Host "Project path: $projectPath"
-    # # Generate translated XLIFF files
-    # $CreateTranslationScriptPath = (Join-Path -Path $PSScriptRoot -ChildPath "..\CreateXLIFFTranslationFile\GenerateTranslationXLIFF.js" -Resolve)
-    # Write-Host "Translation script path: $CreateTranslationScriptPath"
-    # Write-Host "Generating Translated XLIFF files"
-    # & 'C:\Program Files\nodejs\node.exe' $CreateTranslationScriptPath $projectPath
+    Write-Host "Script path: $PSScriptRoot"
+    Write-Host "Project path: $projectPath"
+    # Generate translated XLIFF files
+    $CreateTranslationScriptPath = (Join-Path -Path $PSScriptRoot -ChildPath "..\CreateXLIFFTranslationFile\GenerateTranslationXLIFF.js" -Resolve)
+    Write-Host "Translation script path: $CreateTranslationScriptPath"
+    Write-Host "Generating Translated XLIFF files"
+    & 'C:\Program Files\nodejs\node.exe' $CreateTranslationScriptPath $projectPath
 
     # Write-Host "Invoke Run-AlPipeline with buildmode $buildMode"
     # Run-AlPipeline @runAlPipelineParams `
@@ -520,6 +523,49 @@ try {
     #     -CreateRuntimePackages:$CreateRuntimePackages `
     #     -appBuild $appBuild -appRevision $appRevision `
     #     -uninstallRemovedApps
+
+    Write-Host "Second: Invoke Run-AlPipeline with buildmode $buildMode"
+    Run-AlPipeline @runAlPipelineParams `
+        -accept_insiderEula `
+        -pipelinename $workflowName `
+        -containerName $containerName `
+        -imageName $imageName `
+        -bcAuthContext $authContext `
+        -environment $environmentName `
+        -artifact $settings.artifact.replace('{INSIDERSASTOKEN}', '') `
+        -vsixFile $settings.vsixFile `
+        -companyName $settings.companyName `
+        -memoryLimit $settings.memoryLimit `
+        -baseFolder $projectPath `
+        -sharedFolder $sharedFolder `
+        -licenseFile $licenseFileUrl `
+        -installApps $installApps `
+        -installTestApps $installTestApps `
+        -installOnlyReferencedApps:$settings.installOnlyReferencedApps `
+        -generateDependencyArtifact:$settings.generateDependencyArtifact `
+        -updateDependencies:$settings.updateDependencies `
+        -previousApps $previousApps `
+        -appFolders $settings.appFolders `
+        -testFolders $settings.testFolders `
+        -bcptTestFolders $settings.bcptTestFolders `
+        -buildOutputFile $buildOutputFile `
+        -containerEventLogFile $containerEventLogFile `
+        -testResultsFile $testResultsFile `
+        -testResultsFormat 'JUnit' `
+        -customCodeCops $settings.customCodeCops `
+        -gitHubActions `
+        -failOn $settings.failOn `
+        -treatTestFailuresAsWarnings:$settings.treatTestFailuresAsWarnings `
+        -rulesetFile $settings.rulesetFile `
+        -enableExternalRulesets:$settings.enableExternalRulesets `
+        -appSourceCopMandatoryAffixes $settings.appSourceCopMandatoryAffixes `
+        -additionalCountries $additionalCountries `
+        -obsoleteTagMinAllowedMajorMinor $settings.obsoleteTagMinAllowedMajorMinor `
+        -buildArtifactFolder $buildArtifactFolder `
+        -CreateRuntimePackages:$CreateRuntimePackages `
+        -appBuild $appBuild -appRevision $appRevision `
+        -uninstallRemovedApps `
+        -credential $pipelineDockerCredential `
 
     if ($containerBaseFolder) {
 
