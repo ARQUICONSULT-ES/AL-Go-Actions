@@ -408,11 +408,11 @@ try {
         -baseFolder $projectPath `
         -sharedFolder $sharedFolder `
         -licenseFile $licenseFileUrl `
-        # -installApps $installApps `
-        # -installTestApps $installTestApps `
-        # -installOnlyReferencedApps:$settings.installOnlyReferencedApps `
-        # -generateDependencyArtifact:$settings.generateDependencyArtifact `
-        # -updateDependencies:$settings.updateDependencies `
+        -installApps $installApps `
+        -installTestApps $installTestApps `
+        -installOnlyReferencedApps:$settings.installOnlyReferencedApps `
+        -generateDependencyArtifact:$settings.generateDependencyArtifact `
+        -updateDependencies:$settings.updateDependencies `
         -previousApps $previousApps `
         -appFolders $settings.appFolders `
         -testFolders $settings.testFolders `
@@ -430,7 +430,7 @@ try {
         -appSourceCopMandatoryAffixes $settings.appSourceCopMandatoryAffixes `
         -additionalCountries $additionalCountries `
         -obsoleteTagMinAllowedMajorMinor $settings.obsoleteTagMinAllowedMajorMinor `
-        -buildArtifactFolder $buildArtifactFolder `
+        # -buildArtifactFolder $buildArtifactFolder `
         -CreateRuntimePackages:$CreateRuntimePackages `
         -appBuild $appBuild -appRevision $appRevision `
         -uninstallRemovedApps `
