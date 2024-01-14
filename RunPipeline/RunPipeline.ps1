@@ -401,7 +401,7 @@ try {
         -imageName $imageName `
         -bcAuthContext $authContext `
         -environment $environmentName `
-        # -artifact $settings.artifact.replace('{INSIDERSASTOKEN}', '') `
+        -artifact $settings.artifact.replace('{INSIDERSASTOKEN}', '') `
         -vsixFile $settings.vsixFile `
         -companyName $settings.companyName `
         -memoryLimit $settings.memoryLimit `
