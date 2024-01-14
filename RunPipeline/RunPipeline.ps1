@@ -401,26 +401,26 @@ try {
         -imageName $imageName `
         -bcAuthContext $authContext `
         -environment $environmentName `
-        # -artifact $settings.artifact.replace('{INSIDERSASTOKEN}', '') `
+        -artifact $settings.artifact.replace('{INSIDERSASTOKEN}', '') `
         -vsixFile $settings.vsixFile `
         -companyName $settings.companyName `
         -memoryLimit $settings.memoryLimit `
         -baseFolder $projectPath `
         -sharedFolder $sharedFolder `
         -licenseFile $licenseFileUrl `
-        # -installApps $installApps `
-        # -installTestApps $installTestApps `
-        # -installOnlyReferencedApps:$settings.installOnlyReferencedApps `
-        # -generateDependencyArtifact:$settings.generateDependencyArtifact `
-        # -updateDependencies:$settings.updateDependencies `
-        # -previousApps $previousApps `
-        # -appFolders $settings.appFolders `
-        # -testFolders $settings.testFolders `
-        # -bcptTestFolders $settings.bcptTestFolders `
+        -installApps $installApps `
+        -installTestApps $installTestApps `
+        -installOnlyReferencedApps:$settings.installOnlyReferencedApps `
+        -generateDependencyArtifact:$settings.generateDependencyArtifact `
+        -updateDependencies:$settings.updateDependencies `
+        -previousApps $previousApps `
+        -appFolders $settings.appFolders `
+        -testFolders $settings.testFolders `
+        -bcptTestFolders $settings.bcptTestFolders `
         -buildOutputFile $buildOutputFile `
         -containerEventLogFile $containerEventLogFile `
-        # -testResultsFile $testResultsFile `
-        # -testResultsFormat 'JUnit' `
+        -testResultsFile $testResultsFile `
+        -testResultsFormat 'JUnit' `
         -customCodeCops $settings.customCodeCops `
         -gitHubActions `
         -failOn $settings.failOn `
@@ -430,8 +430,8 @@ try {
         -appSourceCopMandatoryAffixes $settings.appSourceCopMandatoryAffixes `
         -additionalCountries $additionalCountries `
         -obsoleteTagMinAllowedMajorMinor $settings.obsoleteTagMinAllowedMajorMinor `
-        # -buildArtifactFolder $buildArtifactFolder `
-        # -CreateRuntimePackages:$CreateRuntimePackages `
+        -buildArtifactFolder $buildArtifactFolder `
+        -CreateRuntimePackages:$CreateRuntimePackages `
         -appBuild $appBuild -appRevision $appRevision `
         -uninstallRemovedApps `
         -credential $pipelineDockerCredential `
