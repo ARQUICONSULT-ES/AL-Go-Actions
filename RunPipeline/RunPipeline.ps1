@@ -390,6 +390,9 @@ try {
     # Create docker credential
     $pipelineDockerCredential = (New-Object pscredential 'admin', (ConvertTo-SecureString -String (Get-RandomPassword -PasswordLength 16) -AsPlainText -Force))
 
+    Write-Host "PRE: Script path: $PSScriptRoot"
+    Write-Host "PRE: Project path: $projectPath"
+
     Write-Host "First: Run-AlPipeline with buildmode $buildMode"
     Run-AlPipeline @runAlPipelineParams `
         -accept_insiderEula `
@@ -566,6 +569,7 @@ try {
         -appBuild $appBuild -appRevision $appRevision `
         -uninstallRemovedApps `
         -credential $pipelineDockerCredential `
+        -reUseContainer
 
     if ($containerBaseFolder) {
 
