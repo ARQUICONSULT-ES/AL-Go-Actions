@@ -391,44 +391,44 @@ try {
     $pipelineDockerCredential = (New-Object pscredential 'admin', (ConvertTo-SecureString -String (Get-RandomPassword -PasswordLength 16) -AsPlainText -Force))
 
     Write-Host "::group::First compilation: Run-AlPipeline with buildmode $buildMode"
-    Run-AlPipeline @runAlPipelineParams `
-        -accept_insiderEula `
-        -pipelinename $workflowName `
-        -containerName $containerName `
-        -imageName $imageName `
-        -bcAuthContext $authContext `
-        -environment $environmentName `
-        -artifact $settings.artifact.replace('{INSIDERSASTOKEN}', '') `
-        -vsixFile $settings.vsixFile `
-        -companyName $settings.companyName `
-        -memoryLimit $settings.memoryLimit `
-        -baseFolder $projectPath `
-        -sharedFolder $sharedFolder `
-        -licenseFile $licenseFileUrl `
-        -updateDependencies:$settings.updateDependencies `
-        -previousApps $previousApps `
-        -appFolders $settings.appFolders `
-        -testFolders $settings.testFolders `
-        -bcptTestFolders $settings.bcptTestFolders `
-        -buildOutputFile $buildOutputFile `
-        -containerEventLogFile $containerEventLogFile `
-        -testResultsFile $testResultsFile `
-        -testResultsFormat 'JUnit' `
-        -customCodeCops $settings.customCodeCops `
-        -gitHubActions `
-        -failOn $settings.failOn `
-        -treatTestFailuresAsWarnings:$settings.treatTestFailuresAsWarnings `
-        -rulesetFile $settings.rulesetFile `
-        -enableExternalRulesets:$settings.enableExternalRulesets `
-        -appSourceCopMandatoryAffixes $settings.appSourceCopMandatoryAffixes `
-        -additionalCountries $additionalCountries `
-        -obsoleteTagMinAllowedMajorMinor $settings.obsoleteTagMinAllowedMajorMinor `
-        -CreateRuntimePackages:$CreateRuntimePackages `
-        -appBuild $appBuild -appRevision $appRevision `
-        -uninstallRemovedApps `
-        -credential $pipelineDockerCredential `
-        -keepContainer `
-        -PublishBcContainerApp { Write-Host "Publish override" } 
+    # Run-AlPipeline @runAlPipelineParams `
+    #     -accept_insiderEula `
+    #     -pipelinename $workflowName `
+    #     -containerName $containerName `
+    #     -imageName $imageName `
+    #     -bcAuthContext $authContext `
+    #     -environment $environmentName `
+    #     -artifact $settings.artifact.replace('{INSIDERSASTOKEN}', '') `
+    #     -vsixFile $settings.vsixFile `
+    #     -companyName $settings.companyName `
+    #     -memoryLimit $settings.memoryLimit `
+    #     -baseFolder $projectPath `
+    #     -sharedFolder $sharedFolder `
+    #     -licenseFile $licenseFileUrl `
+    #     -updateDependencies:$settings.updateDependencies `
+    #     -previousApps $previousApps `
+    #     -appFolders $settings.appFolders `
+    #     -testFolders $settings.testFolders `
+    #     -bcptTestFolders $settings.bcptTestFolders `
+    #     -buildOutputFile $buildOutputFile `
+    #     -containerEventLogFile $containerEventLogFile `
+    #     -testResultsFile $testResultsFile `
+    #     -testResultsFormat 'JUnit' `
+    #     -customCodeCops $settings.customCodeCops `
+    #     -gitHubActions `
+    #     -failOn $settings.failOn `
+    #     -treatTestFailuresAsWarnings:$settings.treatTestFailuresAsWarnings `
+    #     -rulesetFile $settings.rulesetFile `
+    #     -enableExternalRulesets:$settings.enableExternalRulesets `
+    #     -appSourceCopMandatoryAffixes $settings.appSourceCopMandatoryAffixes `
+    #     -additionalCountries $additionalCountries `
+    #     -obsoleteTagMinAllowedMajorMinor $settings.obsoleteTagMinAllowedMajorMinor `
+    #     -CreateRuntimePackages:$CreateRuntimePackages `
+    #     -appBuild $appBuild -appRevision $appRevision `
+    #     -uninstallRemovedApps `
+    #     -credential $pipelineDockerCredential `
+    #     -keepContainer `
+    #     -PublishBcContainerApp { Write-Host "Publish override" } 
     # -keepContainer `
     # -installApps $installApps `
     # -installTestApps $installTestApps `
@@ -480,13 +480,13 @@ try {
     Write-Host "::endgroup::"
 
     Write-Host "::group::Generating XLIFF translated files"
-    Write-Host "Script path: $PSScriptRoot"
-    Write-Host "Project path: $projectPath"
-    # Generate translated XLIFF files
-    $CreateTranslationScriptPath = (Join-Path -Path $PSScriptRoot -ChildPath "..\CreateXLIFFTranslationFile\GenerateTranslationXLIFF.js" -Resolve)
-    Write-Host "Translation script path: $CreateTranslationScriptPath"
-    Write-Host "Generating Translated XLIFF files"
-    & 'C:\Program Files\nodejs\node.exe' $CreateTranslationScriptPath $projectPath
+    # Write-Host "Script path: $PSScriptRoot"
+    # Write-Host "Project path: $projectPath"
+    # # Generate translated XLIFF files
+    # $CreateTranslationScriptPath = (Join-Path -Path $PSScriptRoot -ChildPath "..\CreateXLIFFTranslationFile\GenerateTranslationXLIFF.js" -Resolve)
+    # Write-Host "Translation script path: $CreateTranslationScriptPath"
+    # Write-Host "Generating Translated XLIFF files"
+    # & 'C:\Program Files\nodejs\node.exe' $CreateTranslationScriptPath $projectPath
     Write-Host "::endgroup::"
 
     # Write-Host "Invoke Run-AlPipeline with buildmode $buildMode"
@@ -569,8 +569,8 @@ try {
         -CreateRuntimePackages:$CreateRuntimePackages `
         -appBuild $appBuild -appRevision $appRevision `
         -uninstallRemovedApps `
-        -credential $pipelineDockerCredential `
-        -reUseContainer
+        -credential $pipelineDockerCredential
+    # -reUseContainer
     Write-Host "::endgroup::"
 
     if ($containerBaseFolder) {
