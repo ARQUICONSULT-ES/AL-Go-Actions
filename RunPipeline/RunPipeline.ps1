@@ -390,10 +390,7 @@ try {
     # Create docker credential
     $pipelineDockerCredential = (New-Object pscredential 'admin', (ConvertTo-SecureString -String (Get-RandomPassword -PasswordLength 16) -AsPlainText -Force))
 
-    Write-Host "PRE: Script path: $PSScriptRoot"
-    Write-Host "PRE: Project path: $projectPath"
-
-    Write-Host "First: Run-AlPipeline with buildmode $buildMode"
+    Write-Host "::group::First compilation: Run-AlPipeline with buildmode $buildMode"
     Run-AlPipeline @runAlPipelineParams `
         -accept_insiderEula `
         -pipelinename $workflowName `
@@ -437,7 +434,7 @@ try {
     # -installOnlyReferencedApps:$settings.installOnlyReferencedApps `
     # -generateDependencyArtifact:$settings.generateDependencyArtifact `
     # -buildArtifactFolder $buildArtifactFolder `
-
+    
     # Compile first time to generate en-US xliff
     # Write-Host "Invoke Run-AlPipeline for original XLIFF generation"
     # Run-AlPipeline @runAlPipelineParams `
@@ -479,7 +476,9 @@ try {
     #     -uninstallRemovedApps `
     #     -keepContainer `
     #     -PublishBcContainerApp { Write-Host "Publish override" }
+    Write-Host "::endgroup::"
 
+    Write-Host "::group::Generating XLIFF translated files"
     Write-Host "Script path: $PSScriptRoot"
     Write-Host "Project path: $projectPath"
     # Generate translated XLIFF files
@@ -487,6 +486,7 @@ try {
     Write-Host "Translation script path: $CreateTranslationScriptPath"
     Write-Host "Generating Translated XLIFF files"
     & 'C:\Program Files\nodejs\node.exe' $CreateTranslationScriptPath $projectPath
+    Write-Host "::endgroup::"
 
     # Write-Host "Invoke Run-AlPipeline with buildmode $buildMode"
     # Run-AlPipeline @runAlPipelineParams `
@@ -527,7 +527,7 @@ try {
     #     -appBuild $appBuild -appRevision $appRevision `
     #     -uninstallRemovedApps
 
-    Write-Host "Second: Invoke Run-AlPipeline with buildmode $buildMode"
+    Write-Host "::group::Second compilation: Run-AlPipeline with buildmode $buildMode"
     Run-AlPipeline @runAlPipelineParams `
         -accept_insiderEula `
         -pipelinename $workflowName `
@@ -570,6 +570,7 @@ try {
         -uninstallRemovedApps `
         -credential $pipelineDockerCredential
     # -reUseContainer
+    Write-Host "::endgroup::"
 
     if ($containerBaseFolder) {
 
