@@ -409,6 +409,7 @@ try {
         -sharedFolder $sharedFolder `
         -licenseFile $licenseFileUrl `
         -updateDependencies:$settings.updateDependencies `
+        -previousApps $previousApps `
         -appFolders $settings.appFolders `
         -testFolders $settings.testFolders `
         -bcptTestFolders $settings.bcptTestFolders `
@@ -435,7 +436,6 @@ try {
     # -installTestApps $installTestApps `
     # -installOnlyReferencedApps:$settings.installOnlyReferencedApps `
     # -generateDependencyArtifact:$settings.generateDependencyArtifact `
-    # -previousApps $previousApps `
     # -buildArtifactFolder $buildArtifactFolder `
 
     # Compile first time to generate en-US xliff
