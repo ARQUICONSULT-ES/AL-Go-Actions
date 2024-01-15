@@ -431,6 +431,12 @@ try {
         -credential $pipelineDockerCredential `
         -keepContainer `
         -PublishBcContainerApp { Write-Host "Publish override" } 
+    # -installApps $installApps `
+    # -installTestApps $installTestApps `
+    # -installOnlyReferencedApps:$settings.installOnlyReferencedApps `
+    # -generateDependencyArtifact:$settings.generateDependencyArtifact `
+    # -previousApps $previousApps `
+    # -buildArtifactFolder $buildArtifactFolder `
 
     # Compile first time to generate en-US xliff
     # Write-Host "Invoke Run-AlPipeline for original XLIFF generation"
