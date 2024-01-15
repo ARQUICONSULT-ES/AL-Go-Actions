@@ -427,6 +427,7 @@ try {
         -appBuild $appBuild -appRevision $appRevision `
         -uninstallRemovedApps `
         -credential $pipelineDockerCredential `
+        -keepContainer `
         -PublishBcContainerApp { Write-Host "Publish override" } 
     # -keepContainer `
     # -installApps $installApps `
@@ -568,8 +569,8 @@ try {
         -CreateRuntimePackages:$CreateRuntimePackages `
         -appBuild $appBuild -appRevision $appRevision `
         -uninstallRemovedApps `
-        -credential $pipelineDockerCredential
-    # -reUseContainer
+        -credential $pipelineDockerCredential `
+        -reUseContainer
     Write-Host "::endgroup::"
 
     if ($containerBaseFolder) {
