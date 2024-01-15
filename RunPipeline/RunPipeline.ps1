@@ -409,11 +409,11 @@ try {
         -sharedFolder $sharedFolder `
         -licenseFile $licenseFileUrl `
         -installApps $installApps `
-        -installTestApps $installTestApps `
+        # -installTestApps $installTestApps `
         -installOnlyReferencedApps:$settings.installOnlyReferencedApps `
         -generateDependencyArtifact:$settings.generateDependencyArtifact `
         -updateDependencies:$settings.updateDependencies `
-        -previousApps $previousApps `
+        # -previousApps $previousApps `
         -appFolders $settings.appFolders `
         -testFolders $settings.testFolders `
         -bcptTestFolders $settings.bcptTestFolders `
