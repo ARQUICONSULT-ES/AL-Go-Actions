@@ -430,8 +430,8 @@ try {
         -appBuild $appBuild -appRevision $appRevision `
         -uninstallRemovedApps `
         -credential $pipelineDockerCredential `
-        -keepContainer `
         -PublishBcContainerApp { Write-Host "Publish override" } 
+    # -keepContainer `
     # -installApps $installApps `
     # -installTestApps $installTestApps `
     # -installOnlyReferencedApps:$settings.installOnlyReferencedApps `
@@ -568,8 +568,8 @@ try {
         -CreateRuntimePackages:$CreateRuntimePackages `
         -appBuild $appBuild -appRevision $appRevision `
         -uninstallRemovedApps `
-        -credential $pipelineDockerCredential `
-        -reUseContainer
+        -credential $pipelineDockerCredential
+    # -reUseContainer
 
     if ($containerBaseFolder) {
 
