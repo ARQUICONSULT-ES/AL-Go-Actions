@@ -405,6 +405,7 @@ try {
         -baseFolder $projectPath `
         -sharedFolder $sharedFolder `
         -licenseFile $licenseFileUrl `
+        -installApps $installApps `
         -updateDependencies:$settings.updateDependencies `
         -previousApps $previousApps `
         -appFolders $settings.appFolders `
@@ -429,7 +430,6 @@ try {
         -credential $pipelineDockerCredential `
         -keepContainer `
         -PublishBcContainerApp { Write-Host "Publish override" } 
-    # -installApps $installApps `
     # -installTestApps $installTestApps `
     # -installOnlyReferencedApps:$settings.installOnlyReferencedApps `
     # -generateDependencyArtifact:$settings.generateDependencyArtifact `
@@ -461,7 +461,6 @@ try {
         -baseFolder $projectPath `
         -sharedFolder $sharedFolder `
         -licenseFile $licenseFileUrl `
-        -installApps $installApps `
         -installTestApps $installTestApps `
         -installOnlyReferencedApps:$settings.installOnlyReferencedApps `
         -generateDependencyArtifact:$settings.generateDependencyArtifact `
@@ -489,6 +488,7 @@ try {
         -uninstallRemovedApps `
         -credential $pipelineDockerCredential `
         -reUseContainer
+        # -installApps $installApps `
     Write-Host "::endgroup::"
 
     if ($containerBaseFolder) {
