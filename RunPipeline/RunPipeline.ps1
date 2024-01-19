@@ -406,7 +406,10 @@ try {
         -sharedFolder $sharedFolder `
         -licenseFile $licenseFileUrl `
         -installApps $installApps `
+        -installTestApps $installTestApps `
+        -installOnlyReferencedApps:$settings.installOnlyReferencedApps `
         -updateDependencies:$settings.updateDependencies `
+        -generateDependencyArtifact:$settings.generateDependencyArtifact `
         -previousApps $previousApps `
         -appFolders $settings.appFolders `
         -testFolders $settings.testFolders `
@@ -428,11 +431,7 @@ try {
         -appBuild $appBuild -appRevision $appRevision `
         -uninstallRemovedApps `
         -credential $pipelineDockerCredential `
-        -keepContainer `
-        -PublishBcContainerApp { Write-Host "Publish override" } 
-    # -installTestApps $installTestApps `
-    # -installOnlyReferencedApps:$settings.installOnlyReferencedApps `
-    # -generateDependencyArtifact:$settings.generateDependencyArtifact `
+        -keepContainer 
     # -buildArtifactFolder $buildArtifactFolder `
     Write-Host "::endgroup::"
 
@@ -461,10 +460,6 @@ try {
         -baseFolder $projectPath `
         -sharedFolder $sharedFolder `
         -licenseFile $licenseFileUrl `
-        -installTestApps $installTestApps `
-        -installOnlyReferencedApps:$settings.installOnlyReferencedApps `
-        -generateDependencyArtifact:$settings.generateDependencyArtifact `
-        -updateDependencies:$settings.updateDependencies `
         -previousApps $previousApps `
         -appFolders $settings.appFolders `
         -testFolders $settings.testFolders `
@@ -487,8 +482,13 @@ try {
         -appBuild $appBuild -appRevision $appRevision `
         -uninstallRemovedApps `
         -credential $pipelineDockerCredential `
-        -reUseContainer
-        # -installApps $installApps `
+        -reUseContainer `
+        -PublishBcContainerApp { Write-Host "Publish override" } 
+    # -installApps $installApps `
+    # -installTestApps $installTestApps `
+    # -installOnlyReferencedApps:$settings.installOnlyReferencedApps `
+    # -updateDependencies:$settings.updateDependencies `
+    # -generateDependencyArtifact:$settings.generateDependencyArtifact `
     Write-Host "::endgroup::"
 
     if ($containerBaseFolder) {
