@@ -391,6 +391,7 @@ try {
     $pipelineDockerCredential = (New-Object pscredential 'admin', (ConvertTo-SecureString -String (Get-RandomPassword -PasswordLength 16) -AsPlainText -Force))
 
     Write-Host "::group::First compilation: Run-AlPipeline with buildmode $buildMode"
+    $imageName += "Translated"
     Run-AlPipeline @runAlPipelineParams `
         -accept_insiderEula `
         -pipelinename $workflowName `
