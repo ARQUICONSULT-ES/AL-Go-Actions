@@ -431,7 +431,8 @@ try {
         -appBuild $appBuild -appRevision $appRevision `
         -uninstallRemovedApps `
         -credential $pipelineDockerCredential `
-        -keepContainer 
+        -keepContainer `
+        -includeTestToolkit
     # -buildArtifactFolder $buildArtifactFolder `
     Write-Host "::endgroup::"
 
