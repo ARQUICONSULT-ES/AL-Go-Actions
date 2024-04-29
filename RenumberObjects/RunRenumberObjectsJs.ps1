@@ -7,7 +7,7 @@ Write-Host "::group::Rename All Objects Id"
 Write-Host "Script path: $PSScriptRoot"
 Write-Host "Project path: $projectPath"
 # Rename All Objects Id
-$RenameAllObjectsPath = (Join-Path -Path $PSScriptRoot -ChildPath "..\RenumberObject\renumberObjects.js" -Resolve)
+$RenameAllObjectsPath = (Join-Path -Path $PSScriptRoot -ChildPath "..\RenumberObjects\renumberObjects.js" -Resolve)
 Write-Host "Translation script path: $CreateTranslationScriptPath"
 Write-Host "Renamed all fields..."
 & 'C:\Program Files\nodejs\node.exe' $RenameAllObjectsPath $projectPath
