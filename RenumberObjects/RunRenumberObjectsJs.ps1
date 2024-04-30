@@ -1,5 +1,5 @@
 Param(
-    [Parameter(HelpMessage = "The Path Project", Mandatory = $false)]
+    [Parameter(HelpMessage = "Project folder", Mandatory = $false)]
     [string] $project = ""
 )
 

@@ -1,7 +1,7 @@
 name: PowerShell script
 author: Edu Martinez
 inputs:
-  projectPath:
+  project:
     description: The file path of the project in the GitHub repository
     required: true
     default: ${{ github.workspace }}
