@@ -1,12 +1,12 @@
 Param(
     [Parameter(HelpMessage = "Project folder", Mandatory = $false)]
-    [string] $project = ""
+    [string] $ProjectPath = ""
 )
 
-$projectPath = $null
+$projectPathCompleted = $null
 
 $baseFolder = $ENV:GITHUB_WORKSPACE
-$projectPath = Join-Path $baseFolder $project
+$projectPathCompleted = Join-Path $baseFolder $ProjectPath
 
 Write-Host "::group::Rename All Objects Id"
 Write-Host "Script path: $PSScriptRoot"
@@ -16,5 +16,5 @@ Write-Host $projectPath
 $RenameAllObjectsPath = (Join-Path -Path $PSScriptRoot -ChildPath "..\RenumberObjects\renumberObjects.js" -Resolve)
 Write-Host "Translation script path: $RenameAllObjectsPath"
 Write-Host "Renamed all fields..."
-& 'C:\Program Files\nodejs\node.exe' $RenameAllObjectsPath $projectPath
+& 'C:\Program Files\nodejs\node.exe' $RenameAllObjectsPath $projectPathCompleted
 Write-Host "::endgroup::"
