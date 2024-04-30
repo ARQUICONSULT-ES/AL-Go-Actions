@@ -6,7 +6,7 @@ Param(
 $projectPathCompleted = $null
 
 $baseFolder = $ENV:GITHUB_WORKSPACE
-$projectPathCompleted = (Join-Path $baseFolder $ProjectPath "\app\")
+$projectPathCompleted = Join-Path -Path $baseFolder -ChildPath ($ProjectPath + "\app")
 
 Write-Host "::group::Rename All Objects Id"
 Write-Host "Script path: $PSScriptRoot"
