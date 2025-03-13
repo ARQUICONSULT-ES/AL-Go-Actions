@@ -416,6 +416,7 @@ try {
 
     # Create docker credential
     $pipelineDockerCredential = (New-Object pscredential 'admin', (ConvertTo-SecureString -String (Get-RandomPassword -PasswordLength 16) -AsPlainText -Force))
+    Write-Host "Value projectPath: '$projectPath'"
 
     Write-Host "::group::First compilation: Run-AlPipeline with buildmode $buildMode"
     Run-AlPipeline @runAlPipelineParams `
