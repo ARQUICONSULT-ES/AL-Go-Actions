@@ -437,7 +437,7 @@ try {
         -installApps $installApps `
         -installTestApps $installTestApps `
         -installOnlyReferencedApps:$settings.installOnlyReferencedApps `
-        -generateDependencyArtifact `
+        # -generateDependencyArtifact `
         -updateDependencies:$settings.updateDependencies `
         -generateDependencyArtifact:$settings.generateDependencyArtifact `
         -previousApps $previousApps `
