@@ -417,6 +417,28 @@ try {
     # Create docker credential
     $pipelineDockerCredential = (New-Object pscredential 'admin', (ConvertTo-SecureString -String (Get-RandomPassword -PasswordLength 16) -AsPlainText -Force))
     Write-Host "Value projectPath: '$projectPath'"
+    Write-Host "workflowName: '$workflowName'"
+    Write-Host "containerName: '$containerName'"
+    Write-Host "imageName: '$imageName'"
+    Write-Host "bcAuthContext: '$authContext'"
+    Write-Host "environmentName: '$environmentName'"
+    Write-Host "artifact: '$($settings.artifact)'"
+    Write-Host "vsixFile: '$($settings.vsixFile)'"
+    Write-Host "companyName: '$($settings.companyName)'"
+    Write-Host "memoryLimit: '$($settings.memoryLimit)'"
+    Write-Host "baseFolder: '$projectPath'"
+    Write-Host "sharedFolder: '$sharedFolder'"
+    Write-Host "licenseFileUrl: '$licenseFileUrl'"
+    Write-Host "installApps: '$installApps'"
+    Write-Host "installTestApps: '$installTestApps'"
+    Write-Host "appFolders: '$($settings.appFolders)'"
+    Write-Host "testFolders: '$($settings.testFolders)'"
+    Write-Host "bcptTestFolders: '$($settings.bcptTestFolders)'"
+    Write-Host "buildOutputFile: '$buildOutputFile'"
+    Write-Host "containerEventLogFile: '$containerEventLogFile'"
+    Write-Host "testResultsFile: '$testResultsFile'"
+    Write-Host "rulesetFile: '$($settings.rulesetFile)'"
+
 
     Write-Host "::group::First compilation: Run-AlPipeline with buildmode $buildMode"
     Run-AlPipeline @runAlPipelineParams `
