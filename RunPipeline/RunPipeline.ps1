@@ -460,8 +460,7 @@ try {
         -appBuild $appBuild -appRevision $appRevision `
         -uninstallRemovedApps `
         -credential $pipelineDockerCredential `
-        -keepContainer `
-        -buildArtifactFolder $buildArtifactFolder
+        -keepContainer
     Write-Host "::endgroup::"
 
     Write-Host "::group::Generating XLIFF translated files"
