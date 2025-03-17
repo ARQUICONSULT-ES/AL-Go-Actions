@@ -420,6 +420,7 @@ function GetSrcFolder {
                 throw "Unknown repository type"
             }
         }
+        # Original path provided by Microsoft (not working)
         # $path = Join-Path $templateFolder "*/Templates/$typePath/.github/workflows"
         $path = Join-Path $templateFolder "*/.github/workflows"
     }
