@@ -420,7 +420,8 @@ function GetSrcFolder {
                 throw "Unknown repository type"
             }
         }
-        $path = Join-Path $templateFolder "*/Templates/$typePath/.github/workflows"
+        # $path = Join-Path $templateFolder "*/Templates/$typePath/.github/workflows"
+        $path = Join-Path $templateFolder "*/.github/workflows"
     }
     else {
         $path = Join-Path $templateFolder "*/.github/workflows"
