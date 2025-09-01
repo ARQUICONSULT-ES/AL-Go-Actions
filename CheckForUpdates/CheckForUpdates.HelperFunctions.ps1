@@ -1,8 +1,8 @@
 <#
 .SYNOPSIS
 Downloads a template repository and returns the path to the downloaded folder
-.PARAMETER headers
-The headers to use when calling the GitHub API
+.PARAMETER token
+The GitHub token / PAT to use for authentication (if the template repository is private/internal)
 .PARAMETER templateUrl
 The URL to the template repository
 .PARAMETER templateSha
@@ -12,11 +12,30 @@ If true, the latest SHA of the template repository will be downloaded
 #>
 function DownloadTemplateRepository {
     Param(
-        [hashtable] $headers,
+        [string] $token,
         [string] $templateUrl,
         [ref] $templateSha,
         [bool] $downloadLatest
     )
+
+    $templateRepositoryUrl = $templateUrl.Split('@')[0]
+    $templateRepository = $templateRepositoryUrl.Split('/')[-2..-1] -join '/'
+
+    # Use Authenticated API request if possible to avoid the 60 API calls per hour limit
+    $headers = GetHeaders -token $env:GITHUB_TOKEN -repository $templateRepository
+    try {
+        $response = Invoke-WebRequest -Headers $headers -Method Head -Uri $templateRepositoryUrl
+    }
+    catch {
+        # Ignore error
+        $response = $null
+    }
+    if (-not $response -or $response.StatusCode -ne 200) {
+        # GITHUB_TOKEN doesn't have access to template repository, must be private/internal
+        # Get token with read permissions for the template repository
+        # NOTE that the GitHub app needs to be installed in the template repository for this to work
+        $headers = GetHeaders -token $token -repository $templateRepository
+    }
 
     # Construct API URL
     $apiUrl = $templateUrl.Split('@')[0] -replace "^(https:\/\/github\.com\/)(.*)$", "$ENV:GITHUB_API_URL/repos/`$2"
@@ -35,7 +54,7 @@ function DownloadTemplateRepository {
 
     # Download template repository
     $tempName = Join-Path ([System.IO.Path]::GetTempPath()) ([Guid]::NewGuid().ToString())
-    InvokeWebRequest -Headers $headers -Uri $archiveUrl -OutFile "$tempName.zip" -retry
+    InvokeWebRequest -Headers $headers -Uri $archiveUrl -OutFile "$tempName.zip"
     Expand-7zipArchive -Path "$tempName.zip" -DestinationPath $tempName
     Remove-Item -Path "$tempName.zip"
     return $tempName
@@ -47,23 +66,14 @@ function GetLatestTemplateSha {
         [string] $apiUrl,
         [string] $templateUrl
     )
+
     $branch = $templateUrl.Split('@')[1]
-
+    Write-Host "Get latest SHA for $templateUrl"
     try {
-        $response = InvokeWebRequest -Headers $headers -Uri "$apiUrl/branches?per_page=100" -retry
-        $branchInfo = ($response.content | ConvertFrom-Json) | Where-Object { $_.Name -eq $branch }
+        $branchInfo = (InvokeWebRequest -Headers $headers -Uri "$apiUrl/branches/$branch").Content | ConvertFrom-Json
     } catch {
-        if ($_.Exception.Message -like "*401*") {
-            throw "Failed to update AL-Go System Files. Make sure that the personal access token, defined in the secret called GhTokenWorkflow, is not expired and it has permission to update workflows. (Error was $($_.Exception.Message))"
-        } else {
-            throw $_.Exception.Message
-        }
+        throw "Failed to update AL-Go System Files. Could not get the latest SHA from template ($templateUrl). (Error was $($_.Exception.Message))"
     }
-
-    if (!$branchInfo) {
-        throw "$templateUrl doesn't exist"
-    }
-
     return $branchInfo.commit.sha
 }
 
@@ -293,14 +303,53 @@ function GetWorkflowContentWithChangesFromSettings {
 
     $baseName = [System.IO.Path]::GetFileNameWithoutExtension($srcFile)
     $yaml = [Yaml]::Load($srcFile)
-    $workflowScheduleKey = "$($baseName)Schedule"
+    $yamlName = $yaml.get('name:')
+    if ($yamlName) {
+        $workflowName = $yamlName.content.SubString('name:'.Length).Trim().Trim('''"').Trim()
+    }
+    else {
+        $workflowName = $baseName
+    }
 
-    # Any workflow (except for the PullRequestHandler and reusable workflows (_*)) can have a RepoSetting called <workflowname>Schedule, which will be used to set the schedule for the workflow
-    if ($baseName -ne "PullRequestHandler" -and $baseName -notlike '_*') {
+    $workflowScheduleKey = "WorkflowSchedule"
+    $workflowConcurrencyKey = "WorkflowConcurrency"
+    foreach($key in @($workflowScheduleKey,$workflowConcurrencyKey)) {
+        if ($repoSettings.Keys -contains $key -and ($repoSettings."$key")) {
+            throw "The $key setting is not allowed in the global repository settings. Please use the workflow specific settings file or conditional settings."
+        }
+    }
+
+    # Re-read settings and this time include workflow specific settings
+    $repoSettings = ReadSettings -buildMode '' -project '' -workflowName $workflowName -userName '' -branchName '' | ConvertTo-HashTable -recurse
+
+    # Old Schedule key is deprecated, but still supported
+    $oldWorkflowScheduleKey = "$($baseName)Schedule"
+    if ($repoSettings.Keys -contains $oldWorkflowScheduleKey) {
+        # DEPRECATION: REPLACE WITH ERROR AFTER October 1st 2025 --->
         if ($repoSettings.Keys -contains $workflowScheduleKey) {
-            # Read the section under the on: key and add the schedule section
-            $yamlOn = $yaml.Get('on:/')
-            $yaml.Replace('on:/', $yamlOn.content+@('schedule:', "  - cron: '$($repoSettings."$workflowScheduleKey")'"))
+            OutputWarning "Both $oldWorkflowScheduleKey and $workflowScheduleKey are defined in the settings file. $oldWorkflowScheduleKey will be ignored. This warning will become an error in the future"
+        }
+        else {
+            Trace-DeprecationWarning -Message "$oldWorkflowScheduleKey is deprecated" -DeprecationTag "_workflow_Schedule" -WillBecomeError
+            # Convert the old <workflow>Schedule setting to the new WorkflowSchedule setting
+            $repoSettings."$workflowScheduleKey" = @{ "cron" = $repoSettings."$oldWorkflowScheduleKey" }
+        }
+        # <--- REPLACE WITH ERROR AFTER October 1st 2025
+    }
+
+    # Any workflow (except for the PullRequestHandler and reusable workflows (_*)) can have concurrency and schedule defined
+    if ($baseName -ne "PullRequestHandler" -and $baseName -notlike '_*') {
+        # Add Schedule and Concurrency settings to the workflow
+        if ($repoSettings.Keys -contains $workflowScheduleKey) {
+            if ($repoSettings."$workflowScheduleKey" -isnot [hashtable] -or $repoSettings."$workflowScheduleKey".Keys -notcontains 'cron' -or $repoSettings."$workflowScheduleKey".cron -isnot [string]) {
+                throw "The $workflowScheduleKey setting must be a structure containing a cron property"
+            }
+            # Replace or add the schedule part under the on: key
+            $yaml.ReplaceOrAdd('on:/', 'schedule:', @("- cron: '$($repoSettings."$workflowScheduleKey".cron)'"))
+        }
+        if ($repoSettings.Keys -contains $workflowConcurrencyKey) {
+            # Replace or add the concurrency part
+            $yaml.ReplaceOrAdd('', 'concurrency:', $repoSettings."$workflowConcurrencyKey")
         }
     }
 
@@ -389,7 +438,7 @@ function IsDirectALGo {
     $directALGo = $templateUrl -like 'https://github.com/*/AL-Go@*'
     if ($directALGo) {
         if ($templateUrl -like 'https://github.com/microsoft/AL-Go@*' -and -not ($templateUrl -like 'https://github.com/microsoft/AL-Go@*/*')) {
-            throw "You cannot use microsoft/AL-Go as a template repository. Please use a fork of AL-Go instead."
+            throw "You cannot use microsoft/AL-Go as a template repository. Please use microsoft/AL-Go-PTE, microsoft/AL-Go-AppSource or a fork of AL-Go instead."
         }
     }
     return $directALGo
@@ -397,7 +446,7 @@ function IsDirectALGo {
 
 function GetSrcFolder {
     Param(
-        [hashtable] $repoSettings,
+        [string] $repoType,
         [string] $templateUrl,
         [string] $templateFolder,
         [string] $srcPath
@@ -409,7 +458,7 @@ function GetSrcFolder {
         return ''
     }
     if (IsDirectALGo -templateUrl $templateUrl) {
-        switch ($repoSettings.type) {
+        switch ($repoType) {
             "PTE" {
                 $typePath = "Per Tenant Extension"
             }
@@ -436,36 +485,70 @@ function GetSrcFolder {
     return $path
 }
 
+function GetModifiedSettingsContent {
+    Param(
+        [string] $srcSettingsFile,
+        [string] $dstSettingsFile
+    )
+
+    $srcSettings = Get-ContentLF -Path $srcSettingsFile | ConvertFrom-Json
+
+    $dstSettings = $null
+    if(Test-Path -Path $dstSettingsFile -PathType Leaf) {
+        $dstSettings = Get-ContentLF -Path $dstSettingsFile | ConvertFrom-Json
+    }
+
+    if(!$dstSettings) {
+        # If the destination settings file does not exist or it's empty, create an new settings object with default values from the source settings (which includes the $schema property already)
+        $dstSettings = $srcSettings
+    }
+    else {
+        # Change the $schema property to be the same as the source settings file (add it if it doesn't exist)
+        $schemaKey = '$schema'
+        if ($srcSettings.PSObject.Properties.Name -eq $schemaKey) {
+            $schemaValue = $srcSettings."$schemaKey"
+
+            $dstSettings | Add-Member -MemberType NoteProperty -Name "$schemaKey" -Value $schemaValue -Force
+
+            # Make sure the $schema property is the first property in the object
+            $dstSettings = $dstSettings | Select-Object @{ Name = '$schema'; Expression = { $_.'$schema' } }, * -ExcludeProperty '$schema'
+        }
+    }
+
+    return $dstSettings | ConvertTo-JsonLF
+}
+
 function UpdateSettingsFile {
     Param(
         [string] $settingsFile,
-        [hashtable] $updateSettings,
-        [hashtable] $additionalSettings = @{}
+        [hashtable] $updateSettings
     )
 
+    $modified = $false
     # Update Repo Settings file with the template URL
     if (Test-Path $settingsFile) {
         $settings = Get-Content $settingsFile -Encoding UTF8 | ConvertFrom-Json
     }
     else {
         $settings = [PSCustomObject]@{}
+        $modified = $true
     }
     foreach($key in $updateSettings.Keys) {
         if ($settings.PSObject.Properties.Name -eq $key) {
-            $settings."$key" = $updateSettings."$key"
+            if ($settings."$key" -ne $updateSettings."$key") {
+                $settings."$key" = $updateSettings."$key"
+                $modified = $true
+            }
         }
         else {
             # Add the property if it doesn't exist
             $settings | Add-Member -MemberType NoteProperty -Name "$key" -Value $updateSettings."$key"
+            $modified = $true
         }
     }
-    # Grab settings from additionalSettings if they are not already in settings
-    foreach($key in $additionalSettings.Keys) {
-        if (!($settings.PSObject.Properties.Name -eq $key)) {
-            # Add the property if it doesn't exist
-            $settings | Add-Member -MemberType NoteProperty -Name "$key" -Value $additionalSettings."$key"
-        }
+    if ($modified) {
+        # Save the file with LF line endings and UTF8 encoding
+        $settings | Set-JsonContentLF -path $settingsFile
     }
-    # Save the file with LF line endings and UTF8 encoding
-    $settings | Set-JsonContentLF -path $settingsFile
+    return $modified
 }

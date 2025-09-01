@@ -1,4 +1,6 @@
 Param(
+    [Parameter(HelpMessage = "The GitHub token running the action", Mandatory = $false)]
+    [string] $token,
     [Parameter(HelpMessage = "Name of environment to deploy to", Mandatory = $true)]
     [string] $environmentName,
     [Parameter(HelpMessage = "Path to the downloaded artifacts to deploy", Mandatory = $true)]
@@ -7,99 +9,12 @@ Param(
     [ValidateSet('CD','Publish')]
     [string] $type = "CD",
     [Parameter(HelpMessage = "The settings for all Deployment Environments", Mandatory = $true)]
-    [string] $deploymentEnvironmentsJson
+    [string] $deploymentEnvironmentsJson,
+    [Parameter(HelpMessage = "Artifacts version. Used to check if this is a deployment from a PR", Mandatory = $false)]
+    [string] $artifactsVersion = ''
 )
 
-function CheckIfAppNeedsInstallOrUpgrade {
-    Param(
-        [PSCustomObject] $appJson,
-        $installedApp,
-        [string] $installMode
-    )
-
-    $needsInstall = $false
-    $needsUpgrade = $false
-    if ($installedApp) {
-        $newVersion = [version]::new($appJson.Version)
-        $installedVersion = [version]::new($installedApp.versionMajor, $installedApp.versionMinor, $installedApp.versionBuild, $installedApp.versionRevision)
-        if ($newVersion -gt $installedVersion) {
-            $msg = "Dependency app $($appJson.name) is already installed in version $installedVersion, which is lower than $newVersion."
-            if ($installMode -eq 'upgrade') {
-                Write-Host "$msg Needs upgrade."
-                $needsUpgrade = $true
-            }
-            else {
-                Write-Host "::WARNING::$msg Set DependencyInstallMode to 'upgrade' or 'forceUpgrade' to upgrade dependencies."
-            }
-        }
-        elseif ($newVersion -lt $installedVersion) {
-            Write-Host "::WARNING::Dependency app $($appJson.name) is already installed in version $installedVersion, which is higher than $newVersion, used for this build. Please update your local copy of this dependency."
-        }
-        else {
-            Write-Host "Dependency app $($appJson.name) is already installed in version $installedVersion."
-        }
-    }
-    else {
-        Write-Host "Dependency app $($appJson.name) is not installed."
-        $needsInstall = $true
-    }
-    return $needsInstall, $needsUpgrade
-}
-
-function InstallOrUpgradeApps {
-    Param(
-        [hashtable] $bcAuthContext,
-        [string] $environment,
-        [string[]] $apps,
-        [string] $installMode
-    )
-
-    $schemaSyncMode = 'Add'
-    if ($installMode -eq 'ForceUpgrade') {
-        $schemaSyncMode = 'Force'
-        $installMode = 'upgrade'
-    }
-    $tempPath = Join-Path ([System.IO.Path]::GetTempPath()) ([GUID]::NewGuid().ToString())
-    New-Item -ItemType Directory -Path $tempPath | Out-Null
-    try {
-        Copy-AppFilesToFolder -appFiles $apps -folder $tempPath | Out-Null
-        $apps = @(Get-ChildItem -Path $tempPath -Filter *.app | ForEach-Object { $_.FullName })
-        $installedApps = Get-BcInstalledExtensions -bcAuthContext $bcAuthContext -environment $environment | Where-Object { $_.isInstalled }
-        $PTEsToInstall = @()
-        # Run through all apps and install or upgrade AppSource apps first (and collect PTEs)
-        foreach($app in $apps) {
-            # Get AppJson (works for full .app files, symbol files and also runtime packages)
-            $appJson = Get-AppJsonFromAppFile -appFile $app
-            $isPTE = ($appjson.idRanges.from -lt 100000 -and $appjson.idRanges.from -ge 50000)
-            $installedApp = $installedApps | Where-Object { $_.id -eq $appJson.id }
-            $needsInstall, $needsUpgrade = CheckIfAppNeedsInstallOrUpgrade -appJson $appJson -installedApp $installedApp -installMode $installMode
-            if ($needsUpgrade) {
-                if (-not $isPTE -and $installedApp.publishedAs.Trim() -eq 'Dev') {
-                    Write-Host "::WARNING::Dependency AppSource App $($appJson.name) is published in Dev scoope. Cannot upgrade."
-                    $needsUpgrade = $false
-                }
-            }
-            if ($needsUpgrade -or $needsInstall) {
-                if ($isPTE) {
-                    $PTEsToInstall += $app
-                }
-                else {
-                    Install-BcAppFromAppSource -bcAuthContext $bcAuthContext -environment $environment -appId $appJson.id -acceptIsvEula -installOrUpdateNeededDependencies
-                    # Update installed apps list as dependencies may have changed / been installed
-                    $installedApps = Get-BcInstalledExtensions -bcAuthContext $bcAuthContext -environment $environment | Where-Object { $_.isInstalled }
-                }
-            }
-        }
-        if ($PTEsToInstall) {
-            # Install or upgrade PTEs
-            Publish-PerTenantExtensionApps -bcAuthContext $bcAuthContext -environment $environment -appFiles $PTEsToInstall -SchemaSyncMode $schemaSyncMode
-        }
-    }
-    finally {
-        Remove-Item -Path $tempPath -Force -Recurse
-    }
-}
-
+Import-Module (Join-Path -Path $PSScriptRoot "Deploy.psm1")
 . (Join-Path -Path $PSScriptRoot -ChildPath "..\AL-Go-Helper.ps1" -Resolve)
 DownloadAndImportBcContainerHelper
 
@@ -121,40 +36,28 @@ foreach($secretName in "$($envName)-AuthContext","$($envName)_AuthContext","Auth
     }
 }
 if (-not $authContext) {
+    $msg = "No Authentication Context found for environment ($environmentName). You must create an environment secret called AUTHCONTEXT or a repository secret called $($envName)_AUTHCONTEXT in order to deploy to this environment."
     # No AuthContext secret provided, if deviceCode is present, use it - else give an error
     if ($env:deviceCode) {
         $authContext = "{""deviceCode"":""$($env:deviceCode)""}"
     }
+    elseif ($type -eq 'CD' -and (-not $deploymentSettings.continuousDeployment)) {
+        # Continuous Deployment is undefined in settings - we will not ignore the environment if no AuthContext is provided
+        OutputNotice -message $msg
+        exit
+    }
     else {
-        throw "No Authentication Context found for environment ($environmentName). You must create an environment secret called AUTHCONTEXT or a repository secret called $($envName)_AUTHCONTEXT."
+        throw $msg
     }
 }
 
 $apps = @()
 $dependencies = @()
-$artifactsFolder = Join-Path $ENV:GITHUB_WORKSPACE $artifactsFolder
-if (Test-Path $artifactsFolder -PathType Container) {
-    $deploymentSettings.Projects.Split(',') | ForEach-Object {
-        $project = $_.Replace('\','_').Replace('/','_')
-        $refname = "$ENV:GITHUB_REF_NAME".Replace('/','_')
-        Write-Host "project '$project'"
-        $projectApps = @((Get-ChildItem -Path $artifactsFolder -Filter "$project-$refname-$($buildMode)Apps-*.*.*.*") | ForEach-Object { $_.FullName })
-        if ($deploymentSettings.DependencyInstallMode -ne "ignore") {
-            $dependencies += @((Get-ChildItem -Path $artifactsFolder -Filter "$project-$refname-$($buildMode)Dependencies-*.*.*.*") | ForEach-Object { $_.FullName })
-        }
-        if (!($projectApps)) {
-            if ($project -ne '*') {
-                throw "There are no artifacts present in $artifactsFolder matching $project-$refname-$($buildMode)Apps-<version>."
-            }
-        }
-        else {
-            $apps += $projectApps
-        }
-    }
-}
-else {
-    throw "Artifact $artifactsFolder was not found. Make sure that the artifact files exist and files are not corrupted."
-}
+$apps, $dependencies = GetAppsAndDependenciesFromArtifacts -token $token -artifactsFolder $artifactsFolder -deploymentSettings $deploymentSettings -artifactsVersion $artifactsVersion
+
+# Calculate unknown dependencies for all apps and known dependencies
+$unknownDependencies = @()
+Sort-AppFilesByDependencies -appFiles @($apps + $dependencies) -unknownDependencies ([ref]$unknownDependencies) -WarningAction SilentlyContinue | Out-Null
 
 Write-Host "Apps to deploy"
 $apps | ForEach-Object {
@@ -175,8 +78,9 @@ if ($deploymentSettings.DependencyInstallMode -ne "ignore") {
 
 Set-Location $ENV:GITHUB_WORKSPACE
 
-$customScript = Join-Path $ENV:GITHUB_WORKSPACE ".github/DeployTo$($deploymentSettings.EnvironmentType).ps1"
-if (Test-Path $customScript) {
+# Use Get-ChildItem to support Linux (case sensitive filenames) as well as Windows
+$customScript = Get-ChildItem -Path (Join-Path $ENV:GITHUB_WORKSPACE '.github') | Where-Object { $_.Name -eq "DeployTo$($deploymentSettings.EnvironmentType).ps1" } | ForEach-Object { $_.FullName }
+if ($customScript) {
     Write-Host "Executing custom deployment script $customScript"
     $parameters = @{
         "type" = $type
@@ -229,9 +133,18 @@ else {
             # Continuous deployment is undefined in settings - we will not deploy to production environments
             Write-Host "::Warning::Ignoring environment $($deploymentSettings.EnvironmentName), which is a production environment"
         }
+        elseif (!$sandboxEnvironment -and $deploymentSettings.includeTestAppsInSandboxEnvironment) {
+            Write-Host "::Warning::Ignoring environment $($deploymentSettings.EnvironmentName), which is a production environment, as test apps can only be deployed to sandbox environments"
+        }
+        elseif (!$sandboxEnvironment -and $artifactsVersion -like "PR_*") {
+            Write-Host "::Warning::Ignoring environment $($deploymentSettings.EnvironmentName), which is a production environment, as deploying from a PR is only supported in sandbox environments"
+        }
         else {
             if ($dependencies) {
                 InstallOrUpgradeApps -bcAuthContext $bcAuthContext -environment $deploymentSettings.EnvironmentName -Apps $dependencies -installMode $deploymentSettings.DependencyInstallMode
+            }
+            if ($unknownDependencies) {
+                InstallUnknownDependencies -bcAuthContext $bcAuthContext -environment $deploymentSettings.EnvironmentName -Apps $unknownDependencies -installMode $deploymentSettings.DependencyInstallMode
             }
             if ($scope -eq 'Dev') {
                 if (!$sandboxEnvironment) {
@@ -268,6 +181,9 @@ else {
                     if ($syncMode -eq 'ForceSync') { $syncMode = 'Force' }
                     $parameters += @{ "SchemaSyncMode" = $syncMode }
                 }
+
+                CheckInstalledApps -bcAuthContext $bcAuthContext -environment $deploymentSettings.EnvironmentName -appFiles $apps
+
                 Write-Host "Publishing apps using automation API"
                 Publish-PerTenantExtensionApps @parameters
             }

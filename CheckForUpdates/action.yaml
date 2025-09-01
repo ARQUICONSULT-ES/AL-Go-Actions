@@ -1,9 +1,5 @@
 name: Check For Updates
 author: Microsoft Corporation
-permissions:
-  contents: write
-  pull-requests: write
-  workflows: write
 inputs:
   shell:
     description: Shell in which you want to run the action (powershell or pwsh)
@@ -14,9 +10,9 @@ inputs:
     required: false
     default: ${{ github.actor }}
   token:
-    description: The GitHub token running the action
+    description: Base64 encoded GhTokenWorkflow secret
     required: false
-    default: ${{ github.token }}
+    default: ''
   templateUrl:
     description: URL of the template repository (default is the template repository used to create the repository)
     required: false

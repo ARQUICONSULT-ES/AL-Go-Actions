@@ -32,8 +32,15 @@ function MaskValue {
         [string] $value
     )
 
+    $value = $value.Trim()
+    if ([String]::IsNullOrEmpty($value)) {
+        return
+    }
+
     Write-Host "Masking value for $key"
-    Write-Host "::add-mask::$value"
+    $value.Split("`n") | ForEach-Object {
+        Write-Host "::add-mask::$_"
+    }
 
     $val2 = ""
     $value.ToCharArray() | ForEach-Object {
@@ -47,7 +54,9 @@ function MaskValue {
     }
 
     if ($val2 -ne $value) {
-        Write-Host "::add-mask::$val2"
+        $val2.Split("`n") | ForEach-Object {
+            Write-Host "::add-mask::$_"
+        }
     }
     Write-Host "::add-mask::$([Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($value)))"
 }
@@ -67,15 +76,12 @@ function GetGithubSecret {
     if ($script:gitHubSecrets.PSObject.Properties.Name -eq $secret) {
         $value = $script:githubSecrets."$secret"
         if ($value) {
-            MaskValue -key $envVar -value $value
             if ($encrypted) {
                 # Return encrypted string
-                return (ConvertTo-SecureString -String $value -AsPlainText -Force | ConvertFrom-SecureString)
+                $value = ConvertTo-SecureString -String $value -AsPlainText -Force | ConvertFrom-SecureString
             }
-            else {
-                # Return decrypted string
-                return $value
-            }
+            MaskValue -key $envVar -value $value
+            return $value
         }
     }
 
@@ -170,6 +176,7 @@ function GetKeyVaultSecret {
         if ($encrypted) {
             # Return encrypted string
             $value = $keyVaultSecret.SecretValue | ConvertFrom-SecureString
+            MaskValue -key $envVar -value $value
         }
         else {
             # Return decrypted string

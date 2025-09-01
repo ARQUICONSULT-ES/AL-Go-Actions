@@ -1,3 +1,5 @@
+. (Join-Path $PSScriptRoot "AL-Go-Helper.ps1")
+
 function Test-Property {
     Param(
         [HashTable] $json,
@@ -43,6 +45,18 @@ function Test-Shell {
     }
 }
 
+function Test-Deprecations {
+    Param(
+        [HashTable] $json,
+        [string] $settingsDescription
+    )
+
+    # <workflowName>Schedule is deprecated
+    ($json.Keys | Where-Object {$_ -like '*Schedule' -and $_ -ne 'WorkflowSchedule'}) | ForEach-Object {
+        OutputWarning -Message "$_ in $settingsDescription is deprecated. See https://aka.ms/algodeprecations#_workflow_Schedule. This warning will become an error in the future."
+    }
+}
+
 function Test-SettingsJson {
     Param(
         [hashtable] $json,
@@ -50,6 +64,8 @@ function Test-SettingsJson {
         [ValidateSet('Repo','Project','Workflow','Variable')]
         [string] $type
     )
+
+    Test-Deprecations -json $json -settingsDescription $settingsDescription
 
     Test-Shell -json $json -settingsDescription $settingsDescription -property 'shell'
     Test-Shell -json $json -settingsDescription $settingsDescription -property 'gitHubRunnerShell'
@@ -71,18 +87,17 @@ function Test-SettingsJson {
     if ($type -eq 'Workflow') {
         # Test for things that should / should not exist in a workflow settings file
     }
+    else {
+        # workflowSchedule and workflowConcurrency should only exist in workflow specific settings files (or conditional settings - not tested)
+        Test-Property -settingsDescription $settingsDescription -json $json -key 'workflowSchedule' -maynot
+        Test-Property -settingsDescription $settingsDescription -json $json -key 'workflowConcurrency' -maynot
+    }
     if ($type -eq 'Variable') {
         # Test for things that should / should not exist in a settings variable
     }
     if ($type -eq 'Project' -or $type -eq 'Workflow') {
         # templateUrl should not be in Project or Workflow settings
         Test-Property -settingsDescription $settingsDescription -json $json -key 'templateUrl' -maynot
-
-        # schedules and runs-on should not be in Project or Workflow settings
-        # These properties are used in Update AL-Go System Files, hence they should only be in Repo settings
-        'nextMajorSchedule','nextMinorSchedule','currentSchedule','runs-on' | ForEach-Object {
-            Test-Property -settingsDescription $settingsDescription -json $json -key $_ -shouldnot
-        }
     }
 }
 
@@ -100,7 +115,7 @@ function Test-JsonStr {
 
     try {
         $json = $jsonStr | ConvertFrom-Json | ConvertTo-HashTable
-        Test-SettingsJson -json $json -settingsDescription $settingsDescription -type:$type
+        Test-SettingsJson -json $json -settingsDescription $settingsDescription -type $type
     }
     catch {
         OutputError "$($_.Exception.Message.Replace("`r",'').Replace("`n",' ')) in $settingsDescription"
@@ -156,12 +171,15 @@ function TestALGoRepository {
     # Test .json files are formatted correctly
     # Get-ChildItem needs -force to include folders starting with . (e.x. .github / .AL-Go) on Linux
     Get-ChildItem -Path $baseFolder -Filter '*.json' -Recurse -Force | ForEach-Object {
-        if ($_.Directory.Name -eq '.AL-Go' -and $_.BaseName -eq 'settings') {
+        if ($_.Directory.Name -eq ([System.IO.Path]::GetDirectoryName($ALGoSettingsFile)) -and $_.Name -eq ([System.IO.Path]::GetFileName($ALGoSettingsFile))) {
             Test-JsonFile -jsonFile $_.FullName -baseFolder $baseFolder -type 'Project'
         }
-        elseif ($_.Directory.Name -eq '.github' -and $_.BaseName -like '*ettings') {
-            if ($_.BaseName -eq 'AL-Go-Settings') {
+        elseif ($_.Directory.Name -eq ([System.IO.Path]::GetDirectoryName($RepoSettingsFile)) -and $_.BaseName -like '*ettings') {
+            if ($_.Name -eq ([System.IO.Path]::GetFileName($RepoSettingsFile)) -or $_.Name -eq ([System.IO.Path]::GetFileName($CustomTemplateRepoSettingsFile))) {
                 $type = 'Repo'
+            }
+            elseif ($_.Name -eq ([System.IO.Path]::GetFileName($CustomTemplateProjectSettingsFile))) {
+                $type = 'Project'
             }
             else {
                 $type = 'Workflow'

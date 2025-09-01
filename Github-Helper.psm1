@@ -60,57 +60,67 @@ function InvokeWebRequest {
         [string] $method,
         [string] $body,
         [string] $outFile,
-        [string] $uri,
-        [switch] $retry
+        [string] $uri
     )
 
-    try {
-        $params = @{ "UseBasicParsing" = $true }
-        if ($headers) {
-            $params += @{ "headers" = $headers }
-        }
-        if ($method) {
-            $params += @{ "method" = $method }
-        }
-        if ($body) {
-            $params += @{ "body" = $body }
-        }
-        if ($outfile) {
-            $params += @{ "outfile" = $outfile }
-        }
+    $params = @{ "UseBasicParsing" = $true }
+    if ($headers) {
+        $params += @{ "headers" = $headers }
+    }
+    if ($method) {
+        $params += @{ "method" = $method }
+    }
+    if ($body) {
+        $params += @{ "body" = $body }
+    }
+    if ($outfile) {
+        $params += @{ "outfile" = $outfile }
+    }
+    while ($true) {
         try {
             $result = Invoke-WebRequest  @params -Uri $uri
+            break
         }
         catch [System.Net.WebException] {
             $response = $_.Exception.Response
             $responseUri = $response.ResponseUri.AbsoluteUri
             if ($response.StatusCode -eq 404 -and $responseUri -ne $uri) {
                 Write-Host "::Warning::Repository ($uri) was renamed or moved, please update your references with the new name. Trying $responseUri, as suggested by GitHub."
-                $result = Invoke-WebRequest @params -Uri $responseUri
+                $uri = $responseUri
+                continue
             }
-            else {
-                throw
+            if ($response.StatusCode -eq 403) {
+                $remaining = $response.Headers["X-RateLimit-Remaining"]
+                if ($remaining -le 0) {
+                    $resetTime = [int64]$response.Headers["X-RateLimit-Reset"]  # Unix timestamp in seconds
+                    $resetTimestamp = [DateTimeOffset]::FromUnixTimeSeconds($resetTime).ToLocalTime()
+                    $waitSeconds = ($resetTimestamp - (Get-Date)).TotalSeconds
+                    if ($waitSeconds -gt 0) {
+                        Write-Host "Rate limit exceeded, waiting $waitSeconds seconds for limits to reset"
+                        Start-Sleep -seconds $waitSeconds
+                    }
+                    continue
+                }
             }
+            if ($response.StatusCode -eq 401) {
+                if ($params.ContainsKey('Headers') -and $params.Headers.ContainsKey('Authorization')) {
+                    $publicResponse = Invoke-WebRequest -Method Head -Uri $uri -ErrorAction SilentlyContinue
+                    if ($publicResponse -and $publicResponse.StatusCode -eq 200) {
+                        Write-Host "Authenticated access to repository ($uri) was not permitted, retrying with un-authenticated access since the repository is public"
+                        $params.Headers.Remove('Authorization')
+                        continue
+                    }
+                }
+            }
+            $message = GetExtendedErrorMessage -errorRecord $_
         }
-        $result
-    }
-    catch {
-        $message = GetExtendedErrorMessage -errorRecord $_
-        if ($retry) {
-            Write-Host $message
-            Write-Host "...retrying in 1 minute"
-            Start-Sleep -Seconds 60
-            try {
-                Invoke-WebRequest  @params -Uri $uri
-                return
-            }
-            catch {
-                Write-Host "Retry failed as well"
-            }
+        catch {
+            $message = GetExtendedErrorMessage -errorRecord $_
         }
-        Write-Host $message
+        Write-Host -ForegroundColor Red $message
         throw $message
     }
+    $result
 }
 
 function GetDependencies {
@@ -163,19 +173,20 @@ function GetDependencies {
                         $missingProjects += @($project)
                     }
                 }
-                if ($missingProjects) {
+                if ($missingProjects -and $dependency.baselineWorkflowID) {
                     $dependency.release_status = 'latestBuild'
                     $dependency.branch = $dependency.baseBranch
                     $dependency.projects = $missingProjects -join ","
                 }
             }
             $projects = $dependency.projects
-            $repository = ([uri]$dependency.repo).AbsolutePath.Replace(".git", "").TrimStart("/")
+            $repository = ([uri]$dependency.repo).AbsolutePath.Replace(".git", "").TrimStart("/").TrimEnd("/")
             if ($dependency.release_status -eq "latestBuild") {
-                $artifacts = GetArtifacts -token $dependency.authTokenSecret -api_url $api_url -repository $repository -mask $mask -projects $projects -version $dependency.version -branch $dependency.branch -baselineWorkflowID $dependency.baselineWorkflowID
+                $token = GetAccessToken -token $dependency.authTokenSecret -repository $repository -permissions @{"contents"="read";"actions"="read";"metadata"="read"}
+                $artifacts = GetArtifacts -token $token -api_url $api_url -repository $repository -mask $mask -projects $projects -version $dependency.version -branch $dependency.branch -baselineWorkflowID $dependency.baselineWorkflowID
                 if ($artifacts) {
                     $artifacts | ForEach-Object {
-                        $download = DownloadArtifact -path $saveToPath -token $dependency.authTokenSecret -artifact $_
+                        $download = DownloadArtifact -path $saveToPath -token $token -artifact $_
                         if ($download) {
                             if ($mask -like '*TestApps') {
                                 $downloadedList += @("($download)")
@@ -194,7 +205,8 @@ function GetDependencies {
                 }
             }
             elseif ($dependency.release_status -ne "thisBuild" -and $dependency.release_status -ne "include") {
-                $releases = GetReleases -api_url $api_url -token $dependency.authTokenSecret -repository $repository
+                $token = GetAccessToken -token $dependency.authTokenSecret -repository $repository -permissions @{"contents"="read";"metadata"="read"}
+                $releases = GetReleases -api_url $api_url -token $token -repository $repository
                 if ($dependency.version -ne "latest") {
                     $releases = $releases | Where-Object { ($_.tag_name -eq $dependency.version) }
                 }
@@ -210,7 +222,7 @@ function GetDependencies {
                     throw "Could not find a release that matches the criteria."
                 }
 
-                $download = DownloadRelease -token $dependency.authTokenSecret -projects $projects -api_url $api_url -repository $repository -path $saveToPath -release $release -mask $mask
+                $download = DownloadRelease -token $token -projects $projects -api_url $api_url -repository $repository -path $saveToPath -release $release -mask $mask
                 if ($download) {
                     if ($mask -like '*TestApps') {
                         $downloadedList += @("($download)")
@@ -307,12 +319,12 @@ function CmdDo {
 
 function invoke-gh {
     Param(
-        [parameter(mandatory = $false, ValueFromPipeline = $true)]
+        [parameter(Mandatory = $false, ValueFromPipeline = $true)]
         [string] $inputStr = "",
         [switch] $silent,
         [switch] $returnValue,
-        [parameter(mandatory = $true, position = 0)][string] $command,
-        [parameter(mandatory = $false, position = 1, ValueFromRemainingArguments = $true)] $remaining
+        [parameter(Mandatory = $true, position = 0)][string] $command,
+        [parameter(Mandatory = $false, position = 1, ValueFromRemainingArguments = $true)] $remaining
     )
 
     Process {
@@ -334,12 +346,12 @@ function invoke-gh {
 
 function invoke-git {
     Param(
-        [parameter(mandatory = $false, ValueFromPipeline = $true)]
+        [parameter(Mandatory = $false, ValueFromPipeline = $true)]
         [string] $inputStr = "",
         [switch] $silent,
         [switch] $returnValue,
-        [parameter(mandatory = $true, position = 0)][string] $command,
-        [parameter(mandatory = $false, position = 1, ValueFromRemainingArguments = $true)] $remaining
+        [parameter(Mandatory = $true, position = 0)][string] $command,
+        [parameter(Mandatory = $false, position = 1, ValueFromRemainingArguments = $true)] $remaining
     )
 
     Process {
@@ -494,6 +506,40 @@ function SemVerStrToSemVerObj {
     }
 }
 
+# Compare SemVerStr1 and SemVerStr2
+# Returns -1 if SemVerStr1 < SemVerStrj2
+# Returns 1 if SemVerStr1 > SemVerStr2
+# Returns 0 if SemVerStr1 = SemVerStr2
+function CompareSemVerStrs {
+    Param(
+        [Parameter(Mandatory = $true)]
+        [string] $semVerStr1,
+        [Parameter(Mandatory = $true)]
+        [string] $semVerStr2
+    )
+
+    Process {
+        $semVerObj1 = $semVerStr1 | SemVerStrToSemVerObj
+        $semVerObj2 = $semVerStr2 | SemVerStrToSemVerObj
+        $result = $semVerObj1.Major.CompareTo($semVerObj2.Major)
+        if ($result -eq 0) {
+            $result = $semVerObj1.Minor.CompareTo($semVerObj2.Minor)
+            if ($result -eq 0) {
+                $result = $semVerObj1.Patch.CompareTo($semVerObj2.Patch)
+                if ($result -eq 0) {
+                    for ($i=0; $i -lt 5; $i++) {
+                        $result = ("$($semVerObj1."Addt$i")".CompareTo("$($semVerObj2."Addt$i")"))
+                        if ($result -ne 0) {
+                            return $result
+                        }
+                    }
+                }
+            }
+        }
+        return $result
+    }
+}
+
 function GetReleases {
     Param(
         [string] $token,
@@ -502,7 +548,7 @@ function GetReleases {
     )
 
     Write-Host "Analyzing releases $api_url/repos/$repository/releases"
-    $releases = (InvokeWebRequest -Headers (GetHeader -token $token) -Uri "$api_url/repos/$repository/releases").Content | ConvertFrom-Json
+    $releases = (InvokeWebRequest -Headers (GetHeaders -token $token) -Uri "$api_url/repos/$repository/releases").Content | ConvertFrom-Json
     if ($releases.Count -gt 1) {
         # Sort by SemVer tag
         try {
@@ -557,20 +603,70 @@ function GetLatestRelease {
     $latestRelease
 }
 
-function GetHeader {
+<#
+ .SYNOPSIS
+  This function will return the Access Token based on the given token
+  If the given token is a Personal Access Token, it will be returned unaltered
+  If the given token is a GitHub App token, it will be used to get an Access Token from GitHub
+ .PARAMETER token
+  The given token (PAT or GitHub App token)
+ .PARAMETER api_url
+  The GitHub API URL
+ .PARAMETER repository
+  The Current GitHub repository
+ .PARAMETER repositories
+  The repositories to request access to
+ .PARAMETER permissions
+  The permissions to request for the Access Token
+#>
+function GetAccessToken {
+    Param(
+        [string] $token,
+        [string] $api_url = $ENV:GITHUB_API_URL,
+        [string] $repository = $ENV:GITHUB_REPOSITORY,
+        [string[]] $repositories = @($repository),
+        [hashtable] $permissions = @{}
+    )
+
+    if ([string]::IsNullOrEmpty($token)) {
+        return [string]::Empty
+    }
+
+    if (!($token.StartsWith("{"))) {
+        # not a json token
+        return $token
+    }
+    else {
+        # GitHub App token format: {"GitHubAppClientId":"<client_id>","PrivateKey":"<private_key>"}
+        try {
+            $json = $token | ConvertFrom-Json
+            $realToken = GetGitHubAppAuthToken -gitHubAppClientId $json.GitHubAppClientId -privateKey $json.PrivateKey -api_url $api_url -repository $repository -repositories $repositories -permissions $permissions
+            return $realToken
+        }
+        catch {
+            throw "Error getting access token from GitHub App. The error was ($($_.Exception.Message))"
+        }
+    }
+}
+
+# Get Headers for API requests
+function GetHeaders {
     param (
         [string] $token,
         [string] $accept = "application/vnd.github+json",
-        [string] $apiVersion = "2022-11-28"
+        [string] $apiVersion = "2022-11-28",
+        [string] $api_url = $ENV:GITHUB_API_URL,
+        [string] $repository = $ENV:GITHUB_REPOSITORY,
+        [hashtable] $permissions = @{"contents"="read";"metadata"="read";"actions"="read"}
     )
     $headers = @{
         "Accept" = $accept
         "X-GitHub-Api-Version" = $apiVersion
     }
     if (![string]::IsNullOrEmpty($token)) {
-        $headers["Authorization"] = "token $token"
+        $accessToken = GetAccessToken -token $token -api_url $api_url -repository $repository -permissions $permissions
+        $headers["Authorization"] = "token $accessToken"
     }
-
     return $headers
 }
 
@@ -581,16 +677,18 @@ function WaitForRateLimit {
         [switch] $displayStatus
     )
 
-    $rate = ((InvokeWebRequest -Headers $headers -Uri "https://api.github.com/rate_limit" -retry).Content | ConvertFrom-Json).rate
+    $rate = ((InvokeWebRequest -Headers $headers -Uri "https://api.github.com/rate_limit").Content | ConvertFrom-Json).rate
     $percentRemaining = [int]($rate.remaining*100/$rate.limit)
     if ($displayStatus) {
         Write-Host "$($rate.remaining) API calls remaining out of $($rate.limit) ($percentRemaining%)"
     }
     if ($percentRemaining-lt $percentage) {
-        $resetTimeStamp = ([datetime] '1970-01-01Z').AddSeconds($rate.reset)
-        $waitTime = $resetTimeStamp.Subtract([datetime]::Now)
-        Write-Host "`nLess than 10% API calls left, waiting for $($waitTime.TotalSeconds) seconds for limits to reset."
-        Start-Sleep -seconds ($waitTime.TotalSeconds+1)
+        $resetTimestamp = [DateTimeOffset]::FromUnixTimeSeconds($rate.reset).ToLocalTime()
+        $waitSeconds = ($resetTimestamp - (Get-Date)).TotalSeconds
+        if ($waitSeconds -gt 0) {
+            Write-Host "`nLess than 10% API calls left, waiting for $waitSeconds seconds for limits to reset."
+            Start-Sleep -seconds $waitSeconds
+        }
     }
 }
 
@@ -617,7 +715,7 @@ function GetReleaseNotes {
         $postParams["target_commitish"] = $target_commitish
     }
 
-    InvokeWebRequest -Headers (GetHeader -token $token) -Method POST -Body ($postParams | ConvertTo-Json) -Uri "$api_url/repos/$repository/releases/generate-notes"
+    InvokeWebRequest -Headers (GetHeaders -token $token) -Method POST -Body ($postParams | ConvertTo-Json) -Uri "$api_url/repos/$repository/releases/generate-notes"
 }
 
 function DownloadRelease {
@@ -637,7 +735,7 @@ function DownloadRelease {
     if ([string]::IsNullOrEmpty($token)) {
         $token = invoke-gh -silent -returnValue auth token
     }
-    $headers = GetHeader -token $token -accept "application/octet-stream"
+    $headers = GetHeaders -token $token -accept "application/octet-stream"
     foreach($project in $projects.Split(',')) {
         # GitHub replaces series of special characters with a single dot when uploading release assets
         $project = [Uri]::EscapeDataString($project.Replace('\','_').Replace('/','_').Replace(' ','.')).Replace('%2A','*').Replace('%3F','?').Replace('%','')
@@ -670,30 +768,11 @@ function DownloadRelease {
     }
 }
 
-function CheckRateLimit {
-    Param(
-        [string] $token = ''
-    )
-
-    $headers = GetHeader -token $token
-    $rate = (InvokeWebRequest -Headers $headers -Uri "https://api.github.com/rate_limit").Content | ConvertFrom-Json
-    $rate | ConvertTo-Json -Depth 99 | Out-Host
-    $rate = $rate.rate
-    $percent = [int]($rate.remaining*100/$rate.limit)
-    Write-Host "$($rate.remaining) API calls remaining out of $($rate.limit) ($percent%)"
-    if ($percent -lt 10) {
-        $resetTimeStamp = ([datetime] '1970-01-01Z').AddSeconds($rate.reset)
-        $waitTime = $resetTimeStamp.Subtract([datetime]::Now)
-        Write-Host "Less than 10% API calls left, waiting for $($waitTime.TotalSeconds) seconds for limits to reset."
-        Start-Sleep -seconds ($waitTime.TotalSeconds+1)
-    }
-}
-
 # Get Content of UTF8 encoded file as a string with LF line endings
 # No empty line at the end of the file
 function Get-ContentLF {
     Param(
-        [parameter(mandatory = $true, ValueFromPipeline = $false)]
+        [parameter(Mandatory = $true, ValueFromPipeline = $false)]
         [string] $path
     )
 
@@ -707,20 +786,15 @@ function Get-ContentLF {
 # This function forces UTF8 encoding and LF line endings
 function Set-ContentLF {
     Param(
-        [parameter(mandatory = $true, ValueFromPipeline = $false)]
+        [parameter(Mandatory = $true, ValueFromPipeline = $false)]
         [string] $path,
-        [parameter(mandatory = $true, ValueFromPipeline = $true)]
-        $content
+        [parameter(Mandatory = $true, ValueFromPipeline = $true)]
+        [string] $content
     )
 
     Process {
         $path = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($path)
-        if ($content -is [array]) {
-            $content = $content -join "`n"
-        }
-        else {
-            $content = "$content".Replace("`r", "")
-        }
+        $content = "$content".Replace("`r", "").TrimEnd("`n")
         [System.IO.File]::WriteAllText($path, "$content`n")
     }
 }
@@ -737,25 +811,49 @@ function Set-ContentLF {
 # }
 function Set-JsonContentLF {
     Param(
-        [parameter(mandatory = $true, ValueFromPipeline = $false)]
+        [parameter(Mandatory = $true, ValueFromPipeline = $false)]
         [string] $path,
-        [parameter(mandatory = $true, ValueFromPipeline = $true)]
+        [parameter(Mandatory = $true, ValueFromPipeline = $true)]
         [object] $object
     )
 
     Process {
-        $object | ConvertTo-Json -Depth 99 | Set-ContentLF -path $path
+        $object | ConvertTo-JsonLF | Set-ContentLF -path $path
+    }
+}
+
+ <#
+    .SYNOPSIS
+        Converts a JSON string to a JSON object with LF line endings.
+    .DESCRIPTION
+        Converts a JSON string to a JSON object with LF line endings.
+        This ensures the same formatting in different PowerShell versions.
+    .PARAMETER object
+        The JSON object to convert.
+    .EXAMPLE
+        $json = ConvertTo-JsonLF -object $myObject
+ #>
+function ConvertTo-JsonLF {
+    Param(
+        [parameter(Mandatory = $true, ValueFromPipeline = $true)]
+        [object] $object
+    )
+
+    Process {
+        $content = $object | ConvertTo-Json -Depth 99
         if ($PSVersionTable.PSVersion.Major -lt 6) {
             try {
-                $path = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($path)
-                # This command will reformat a JSON file with LF line endings as PowerShell 7 would do it (when run using pwsh)
-                $command = "`$cr=[char]13;`$lf=[char]10;`$path='$path';`$content=Get-Content `$path -Encoding UTF8|ConvertFrom-Json|ConvertTo-Json -Depth 99;`$content=`$content -replace `$cr,'';`$content|Out-Host;[System.IO.File]::WriteAllText(`$path,`$content+`$lf)"
-                . pwsh -command $command
+                # This command will reformat a JSON content with LF line endings as PowerShell 7 would do it (when run using pwsh)
+                $command = [scriptblock] {
+                    $args[0] | ConvertFrom-Json | ConvertTo-Json -Depth 99
+                }
+                $content = pwsh -Command $command -args ($object | ConvertTo-Json -Depth 99 -Compress)
             }
             catch {
-                Write-Host "WARNING: pwsh (PowerShell 7) not installed, json will be formatted by PowerShell $($PSVersionTable.PSVersion)"
+                Write-Host "WARNING: pwsh (PowerShell 7) not installed, JSON will be formatted by PowerShell $($PSVersionTable.PSVersion)"
             }
         }
+        return $content.Replace("`r", "")
     }
 }
 
@@ -765,14 +863,13 @@ function Set-JsonContentLF {
 function CheckBuildJobsInWorkflowRun {
     Param(
         [Parameter(Mandatory = $true)]
-        [string] $token,
+        [hashtable] $headers,
         [Parameter(Mandatory = $true)]
         [string] $repository,
         [Parameter(Mandatory = $true)]
         [string] $workflowRunId
     )
 
-    $headers = GetHeader -token $token
     $per_page = 100
     $page = 1
 
@@ -795,7 +892,8 @@ function CheckBuildJobsInWorkflowRun {
             $anySuccessful = $true
         }
 
-        if($buildJobs.conclusion -ne 'success') {
+        # Skipped jobs are considered successful as this is just projects, which are not built
+        if($buildJobs.conclusion -ne 'success' -and $buildJobs.conclusion -ne 'skipped') {
             # If there is a build job that is not successful, there is not need to check further
             $allSuccessful = $false
             break
@@ -808,10 +906,10 @@ function CheckBuildJobsInWorkflowRun {
 }
 
 <#
-    Gets the last successful CICD run ID for the specified repository and branch.
-    Successful CICD runs are those that have a workflow run named ' CI/CD' and successfully built all the projects.
+    Gets the last successful CICD run ID and SHA for the specified repository and branch.
+    Successful CICD runs are those that have a workflow run named ' CI/CD', wasn't cancelled and successfully built all the projects within the last $retention days.
 
-    If no successful CICD run is found, 0 is returned.
+    If no successful CICD run is found, 0 and empty string is returned.
 #>
 function FindLatestSuccessfulCICDRun {
     Param(
@@ -820,19 +918,22 @@ function FindLatestSuccessfulCICDRun {
         [Parameter(Mandatory = $true)]
         [string] $branch,
         [Parameter(Mandatory = $true)]
-        [string] $token
+        [string] $token,
+        [Parameter(Mandatory = $true)]
+        [int] $retention
     )
 
-    $headers = GetHeader -token $token
-    $lastSuccessfulCICDRun = 0
+    $headers = GetHeaders -token $token
+    $lastSuccessfulCICDRun = $null
     $per_page = 100
     $page = 1
 
-    Write-Host "Finding latest successful CICD run for branch $branch in repository $repository"
+    Write-Host "Finding latest successful CICD run for branch $branch in repository $repository, checking last $retention days"
+    $expired = [DateTime]::UtcNow.AddDays(-$retention).ToString('o')
 
     # Get the latest CICD workflow run
     while($true) {
-        $runsURI = "https://api.github.com/repos/$repository/actions/runs?per_page=$per_page&page=$page&exclude_pull_requests=true&status=completed&branch=$branch"
+        $runsURI = "https://api.github.com/repos/$repository/actions/runs?per_page=$per_page&page=$page&exclude_pull_requests=true&status=completed&branch=$branch&created=>$expired"
         Write-Host "- $runsURI"
         $workflowRuns = (InvokeWebRequest -Headers $headers -Uri $runsURI).Content | ConvertFrom-Json
 
@@ -846,38 +947,39 @@ function FindLatestSuccessfulCICDRun {
         foreach($CICDRun in $CICDRuns) {
             if($CICDRun.conclusion -eq 'success') {
                 # CICD run is successful
-                $lastSuccessfulCICDRun = $CICDRun.id
+                $lastSuccessfulCICDRun = $CICDRun
                 break
+            }
+            if ($CICDRun.conclusion -eq 'cancelled') {
+                continue
             }
 
             # CICD run is considered successful if all build jobs were successful
-            $areBuildJobsSuccessful = CheckBuildJobsInWorkflowRun -workflowRunId $($CICDRun.id) -token $token -repository $repository
+            $areBuildJobsSuccessful = CheckBuildJobsInWorkflowRun -workflowRunId $($CICDRun.id) -headers $headers -repository $repository
 
             if($areBuildJobsSuccessful) {
-                $lastSuccessfulCICDRun = $CICDRun.id
-                Write-Host "Found last successful CICD run: $($lastSuccessfulCICDRun), from $($CICDRun.created_at)"
+                $lastSuccessfulCICDRun = $CICDRun
                 break
             }
 
             Write-Host "CICD run $($CICDRun.id) is not successful. Skipping."
         }
 
-        if($lastSuccessfulCICDRun -ne 0) {
+        if($lastSuccessfulCICDRun) {
             break
         }
 
         $page += 1
     }
 
-    if($lastSuccessfulCICDRun -ne 0) {
-        Write-Host "Last successful CICD run for branch $branch in repository $repository is $lastSuccessfulCICDRun"
+    if($lastSuccessfulCICDRun) {
+        Write-Host "Last successful CICD run for branch $branch in repository $repository is $($lastSuccessfulCICDRun.id) with SHA $($lastSuccessfulCICDRun.head_sha)"
+        return $lastSuccessfulCICDRun.id, $lastSuccessfulCICDRun.head_sha
     } else {
         Write-Host "No successful CICD run found for branch $branch in repository $repository"
+        return 0, ''
     }
-
-    return $lastSuccessfulCICDRun
 }
-
 
 <#
     Gets the non-expired artifacts from the specified CICD run.
@@ -895,12 +997,14 @@ function GetArtifactsFromWorkflowRun {
         [Parameter(Mandatory = $true)]
         [string] $mask,
         [Parameter(Mandatory = $true)]
-        [string] $projects
+        [string] $projects,
+        [Parameter(Mandatory = $false)]
+        [ref] $expiredArtifacts
     )
 
     Write-Host "Getting artifacts for workflow run $workflowRun, mask $mask, projects $projects and version $version"
 
-    $headers = GetHeader -token $token
+    $headers = GetHeaders -token $token
 
     $foundArtifacts = @()
     $per_page = 100
@@ -934,6 +1038,9 @@ function GetArtifactsFromWorkflowRun {
 
                 if($artifact.expired) {
                     Write-Host "Artifact $($artifact.name) (ID: $($artifact.id)) expired on $($artifact.expired_at)"
+                    if ($expiredArtifacts) {
+                        $expiredArtifacts.value += $artifact
+                    }
                     continue
                 }
 
@@ -976,14 +1083,14 @@ function GetArtifacts {
     )
 
     $refname = $branch.Replace('/','_')
-    $headers = GetHeader -token $token
+    $headers = GetHeaders -token $token
     if ($version -eq 'latest') { $version = '*' }
 
     # For latest version, use the artifacts from the last successful CICD run
     if($version -eq '*') {
         if(-not $baselineWorkflowID) {
-            # If the baseline workflow ID is $null or empty, it means that we need to find the latest successful CICD run
-            $baselineWorkflowID = FindLatestSuccessfulCICDRun -repository $repository -branch $branch -token $token
+            # If the baseline workflow ID is $null or empty, it means that we need to find the latest successful CICD run (within the last 90 days, which is the maximum number of days GitHub Actions keeps artifacts)
+            $baselineWorkflowID,$baselineWorkflowSHA = FindLatestSuccessfulCICDRun -repository $repository -branch $branch -token $token -retention 90
         }
 
         if($baselineWorkflowID -eq '0') {
@@ -1083,7 +1190,7 @@ function DownloadArtifact {
     if ([string]::IsNullOrEmpty($token)) {
         $token = invoke-gh -silent -returnValue auth token
     }
-    $headers = GetHeader -token $token
+    $headers = GetHeaders -token $token
     $foldername = Join-Path $path $artifact.Name
     $filename = "$foldername.zip"
     InvokeWebRequest -Headers $headers -Uri $artifact.archive_download_url -OutFile $filename
@@ -1097,5 +1204,167 @@ function DownloadArtifact {
     }
     else {
         return $filename
+    }
+}
+
+<#
+ .SYNOPSIS
+  This function will return the Access Token based on the gitHubAppClientId and privateKey
+  This GitHub App must be installed in the repositories for which the access is requested
+  The permissions of the GitHub App must include the permissions requested
+ .PARAMETER gitHubAppClientId
+  The GitHub App Client ID
+ .Parameter privateKey
+  The GitHub App Private Key
+ .PARAMETER api_url
+  The GitHub API URL
+ .PARAMETER repository
+  The Current GitHub repository
+ .PARAMETER repositories
+  The repositories to request access to
+ .PARAMETER permissions
+  The permissions to request for the Access Token
+#>
+function GetGitHubAppAuthToken {
+    Param(
+        [string] $gitHubAppClientId,
+        [string] $privateKey,
+        [string] $api_url = $ENV:GITHUB_API_URL,
+        [string] $repository,
+        [hashtable] $permissions = @{},
+        [string[]] $repositories = @()
+    )
+
+    Write-Host "Using GitHub App with ClientId $gitHubAppClientId for authentication"
+    $jwt = GenerateJwtForTokenRequest -gitHubAppClientId $gitHubAppClientId -privateKey $privateKey
+    $headers = @{
+        "Accept" = "application/vnd.github+json"
+        "Authorization" = "Bearer $jwt"
+        "X-GitHub-Api-Version" = "2022-11-28"
+    }
+    Write-Host "Get App Info $api_url/repos/$repository/installation"
+    $appinfo = Invoke-RestMethod -Method GET -UseBasicParsing -Headers $headers -Uri "$api_url/repos/$repository/installation"
+    $body = @{}
+    # If repositories are provided, limit the requested repositories to those
+    if ($repositories) {
+        $body += @{ "repositories" = @($repositories | ForEach-Object { $_.SubString($_.LastIndexOf('/')+1) } ) }
+    }
+    # If permissions are provided, limit the requested permissions to those
+    if ($permissions) {
+        $body += @{ "permissions" = $permissions }
+    }
+    Write-Host "Get Token Response $($appInfo.access_tokens_url) with $($body | ConvertTo-Json -Compress)"
+    $tokenResponse = Invoke-RestMethod -Method POST -UseBasicParsing -Headers $headers -Body ($body | ConvertTo-Json -Compress) -Uri $appInfo.access_tokens_url
+    return $tokenResponse.token
+}
+
+<#
+ .SYNOPSIS
+  Generate JWT for token request
+  As documented here: https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/generating-a-json-web-token-jwt-for-a-github-app
+ .PARAMETER gitHubAppClientId
+  The GitHub App Client ID
+ .Parameter privateKey
+  The GitHub App Private Key
+#>
+function GenerateJwtForTokenRequest {
+    Param(
+        [string] $gitHubAppClientId,
+        [string] $privateKey
+    )
+
+    $header = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes((ConvertTo-Json -InputObject @{
+        alg = "RS256"
+        typ = "JWT"
+    }))).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+
+    $payload = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes((ConvertTo-Json -InputObject @{
+        iat = [System.DateTimeOffset]::UtcNow.AddSeconds(-10).ToUnixTimeSeconds()
+        exp = [System.DateTimeOffset]::UtcNow.AddMinutes(10).ToUnixTimeSeconds()
+        iss = $gitHubAppClientId
+    }))).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+
+    $command = {
+        $rsa = [System.Security.Cryptography.RSA]::Create()
+        $privateKey = "$($args[1])"
+        $rsa.ImportFromPem($privateKey)
+        $signature = [Convert]::ToBase64String($rsa.SignData([System.Text.Encoding]::UTF8.GetBytes($args[0]), [System.Security.Cryptography.HashAlgorithmName]::SHA256, [System.Security.Cryptography.RSASignaturePadding]::Pkcs1)).TrimEnd('=').Replace('+', '-').Replace('/', '_')
+        return $signature
+    }
+
+    if ($PSVersionTable.PSVersion.Major -lt 6) {
+        $signature = pwsh -noprofile -command $command -args "$header.$payload", $privateKey
+    }
+    else {
+        $signature = Invoke-Command -ScriptBlock $command -ArgumentList "$header.$payload", $privateKey
+    }
+    return "$header.$payload.$signature"
+}
+
+<#
+.SYNOPSIS
+    Invokes a command with retry logic.
+.DESCRIPTION
+    This function will invoke a command and retry it up to a specified number of times if it fails.
+    The function will sleep for an increasing amount of time between each retry.
+    The function will stop retrying if the maximum wait time is reached.
+.PARAMETER ScriptBlock
+    The script block to invoke.
+.PARAMETER RetryCount
+    The number of times to retry the command.
+.PARAMETER MaxWaitTimeBeforeLastAttempt
+    The maximum time in seconds to wait before
+.PARAMETER FirstDelay
+    The time in seconds to wait before the first retry.
+.PARAMETER MaxWaitBetweenRetries
+    The maximum time in seconds to wait between retries.
+#>
+function Invoke-CommandWithRetry {
+    [CmdletBinding()]
+    param (
+        [parameter(Mandatory = $true)]
+        [System.Management.Automation.ScriptBlock] $ScriptBlock,
+        [parameter(Mandatory = $false)]
+        [int] $RetryCount = 3,
+        [parameter(Mandatory = $false)]
+        [int] $MaxWaitTimeBeforeLastAttempt = 2 * 60 * 60,
+        [parameter(Mandatory = $false)]
+        [int] $FirstDelay = 60,
+        [parameter(Mandatory = $false)]
+        [ValidateRange(0, 60 * 60)]
+        [int] $MaxWaitBetweenRetries = 60 * 60
+    )
+    # Initialize the variables that will tell us when we should stop trying
+    $startTime = Get-Date
+    $retryNo = 0
+    # Start trying...
+    $nextSleepTime = $FirstDelay
+    while ($true) {
+        $retryNo++
+        try {
+            Invoke-Command -ScriptBlock $ScriptBlock -OutVariable output | Out-Null
+            return $output # Success!
+        }
+        catch [System.Exception] {
+            $exceptionMessage = $_.Exception.Message
+            $secondsSinceStart = ((Get-Date) - $startTime).TotalSeconds
+            # Determine if we should keep trying
+            $tryAgain = $retryNo -lt $RetryCount -and $secondsSinceStart -lt $MaxWaitTimeBeforeLastAttempt
+            # Try again, or stop?
+            if ($tryAgain) {
+                # Sleep
+                $sleepTime = [System.Math]::Min($nextSleepTime, $MaxWaitTimeBeforeLastAttempt - $secondsSinceStart) # don't sleep beyond the max time
+                $sleepTime = [System.Math]::Min($sleepTime, $MaxWaitBetweenRetries) # don't sleep for more than one hour (and don't go above what Start-Sleep can handle (2147483))
+                Write-Warning "Command failed with error '$exceptionMessage' in attempt no $retryNo after $secondsSinceStart seconds. Will retry up to $RetryCount times. Sleeping for $sleepTime seconds before trying again..."
+                Start-Sleep -Seconds $sleepTime
+                $nextSleepTime = 2 * $nextSleepTime # Next time sleep for longer
+                # Now try again
+            }
+            else {
+                # Failed!
+                $output | Write-Host
+                throw
+            }
+        }
     }
 }
