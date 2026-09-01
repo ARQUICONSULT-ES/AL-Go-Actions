@@ -515,10 +515,10 @@ try {
         -uninstallRemovedApps `
         -credential $pipelineDockerCredential `
         -reUseContainer `
-        -PublishBcContainerApp { Write-Host "Publish override" } 
+        -PublishBcContainerApp { Write-Host "Publish override" } `
         -installApps $installApps `
         -installTestApps $installTestApps `
-        -installOnlyReferencedApps:$settings.installOnlyReferencedApps `
+        -installOnlyReferencedApps:$settings.installOnlyReferencedApps
     # -updateDependencies:$settings.updateDependencies `
     # -generateDependencyArtifact:$settings.generateDependencyArtifact `
     Write-Host "::endgroup::"
