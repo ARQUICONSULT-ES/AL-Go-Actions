@@ -516,9 +516,9 @@ try {
         -credential $pipelineDockerCredential `
         -reUseContainer `
         -PublishBcContainerApp { Write-Host "Publish override" } 
-    # -installApps $installApps `
-    # -installTestApps $installTestApps `
-    # -installOnlyReferencedApps:$settings.installOnlyReferencedApps `
+        -installApps $installApps `
+        -installTestApps $installTestApps `
+        -installOnlyReferencedApps:$settings.installOnlyReferencedApps `
     # -updateDependencies:$settings.updateDependencies `
     # -generateDependencyArtifact:$settings.generateDependencyArtifact `
     Write-Host "::endgroup::"
