@@ -6,6 +6,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 const fs = require("fs");
+const path = require("path");
 const xml2js = require("xml2js");
 const OLD_LANGUAGE_CODES = ["ESP", "SVE", "RUS", "NLD", "NLB", "NOR", "ITA", "ITS", "ISL", "FRA", "FRS", "FRC", "FRB", "FIN", "ESM", "ENU", "ENZ", "ENG", "ENC", "ENA", "DEU", "DES", "DEA", "DAN", "CSY", "PTG"];
 const NEW_LANGUAGE_CODES = ["es-ES", "sv-SE", "ru-RU", "nl-NL", "nl-BE", "nb-NO", "it-IT", "it-CH", "is-IS", "fr-FR", "fr-CH", "fr-CA", "fr-BE", "fi-FI", "es-MX", "en-US", "en-NZ", "en-GB", "en-CA", "en-AU", "de-DE", "de-CH", "de-AT", "da-DK", "cs-CZ", "pt-PT"];
@@ -16,16 +17,24 @@ let newLanguageCodes = [];
 class XliffFileMgt {
     static GenerateXliffFiles() {
         if (PROJECT_PATH === undefined) {
-            console.log('Invalid parameter PROJECT_PATH');
+            console.log('::warning::GenerateTranslationXLIFF: missing parameter PROJECT_PATH (the app folder)');
+            process.exitCode = 1;
             return;
         }
-        console.log(`Generating Xliff files...`);
+        console.log(`Generating Xliff files in ${PROJECT_PATH}...`);
         //Getting the app.json file
         appJSON = getAppJSON();
         if (!appJSON) {
+            console.log(`::warning::GenerateTranslationXLIFF: cannot read ${path.join(PROJECT_PATH, 'app.json')}. No translations generated.`);
+            process.exitCode = 1;
             return;
         }
-        const XLIFF_FILE_PATH = `${PROJECT_PATH}\\Translations\\${appJSON.name}.g.xlf`;
+        const XLIFF_FILE_PATH = path.join(PROJECT_PATH, 'Translations', `${appJSON.name}.g.xlf`);
+        if (!fs.existsSync(XLIFF_FILE_PATH)) {
+            // The app does not use the TranslationFile feature: nothing to translate
+            console.log(`No ${XLIFF_FILE_PATH} found. Skipping translations for ${appJSON.name}.`);
+            return;
+        }
         //Reading the XLIFF file
         fs.readFile(XLIFF_FILE_PATH, onXliffFileRead);
     }
@@ -41,6 +50,8 @@ XliffFileMgt.GenerateXliffFiles();
  */
 function onXliffFileRead(err, data) {
     if (err) {
+        console.log(`::warning::GenerateTranslationXLIFF: cannot read the XLIFF file: ${err.message}`);
+        process.exitCode = 1;
         return;
     }
     //Parsing the file content and converting it from XML to JSON
@@ -53,13 +64,22 @@ function onXliffFileRead(err, data) {
  * @param result Result in JSON format
  */
 function onStringParsed(err, result) {
-    if (err) return;
+    if (err) {
+        console.log(`::warning::GenerateTranslationXLIFF: cannot parse the XLIFF file: ${err.message}`);
+        process.exitCode = 1;
+        return;
+    }
+    if (getTransUnits(result).length === 0) {
+        console.log('The XLIFF file has no trans-units. Nothing to translate.');
+        return;
+    }
 
     oldLanguageCodes = getTargetLanguages(result);
     console.log('Detected languages (OLD):', oldLanguageCodes);
     oldLanguageCodes = oldLanguageCodes
     .map(l => l.replace('%', '').trim().toUpperCase())
-    .filter(l => OLD_LANGUAGE_CODES.includes(l));
+    .filter(l => OLD_LANGUAGE_CODES.includes(l))
+    .filter((l, index, list) => list.indexOf(l) === index);
     newLanguageCodes = transformLanguageCodesOldToNew(oldLanguageCodes);
 
     // UN ARCHIVO POR IDIOMA
@@ -137,7 +157,7 @@ function onStringParsed(err, result) {
         const appJSON = getAppJSON();
 
         fs.writeFileSync(
-            `${PROJECT_PATH}\\Translations\\${appJSON.name}.${currentNewLanguageCode}.g.xlf`,
+            path.join(PROJECT_PATH, 'Translations', `${appJSON.name}.${currentNewLanguageCode}.g.xlf`),
             xml,
             'utf8'
         );
@@ -164,7 +184,7 @@ function onFileWritten(err) {
 function getAppJSON() {
     let appJSON;
     try {
-        appJSON = JSON.parse(fs.readFileSync(`${PROJECT_PATH}\\app.json`, 'utf8'));
+        appJSON = JSON.parse(fs.readFileSync(path.join(PROJECT_PATH, 'app.json'), 'utf8').replace(/^﻿/, ''));
     }
     catch (err) {
         return null;
@@ -174,11 +194,17 @@ function getAppJSON() {
 /**
  * Returns the languages found in XLIFF notes
  */
+function getTransUnits(jsonObj) {
+    return jsonObj?.['xliff']?.['file']?.[0]?.['body']?.[0]?.['group']?.[0]?.['trans-unit'] || [];
+}
+/**
+ * Returns the languages found in XLIFF notes
+ */
 function getTargetLanguages(jsonObj) {
-    let transUnits = jsonObj['xliff']['file'][0]['body'][0]['group'][0]['trans-unit'];
+    let transUnits = getTransUnits(jsonObj);
     let languages = [];
     for (const transUnit of transUnits) {
-        for (const note of transUnit['note']) {
+        for (const note of transUnit['note'] || []) {
             //If the note is a translations comment and it has a translation
             if (note['$']['from'] === 'Developer' && typeof note['_'] !== 'undefined') {
                 //let translations = note['_'].toString().split(',');

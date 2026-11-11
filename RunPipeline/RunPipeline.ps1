@@ -469,8 +469,22 @@ try {
     # Generate translated XLIFF files
     $CreateTranslationScriptPath = (Join-Path -Path $PSScriptRoot -ChildPath "..\CreateXLIFFTranslationFile\GenerateTranslationXLIFF.js" -Resolve)
     Write-Host "Translation script path: $CreateTranslationScriptPath"
-    Write-Host "Generating Translated XLIFF files"
-    & 'C:\Program Files\nodejs\node.exe' $CreateTranslationScriptPath $projectPath
+    # Apps can live in the project root (appFolders ".") or in subfolders (appFolders "app"),
+    # so the script runs once per app folder, which is where app.json and Translations are.
+    foreach ($appFolder in @($settings.appFolders)) {
+        if ([System.IO.Path]::IsPathRooted($appFolder)) {
+            $appFolderPath = $appFolder
+        }
+        else {
+            $appFolderPath = Join-Path -Path $projectPath -ChildPath $appFolder
+        }
+        Write-Host "Generating Translated XLIFF files for app folder: $appFolderPath"
+        & 'C:\Program Files\nodejs\node.exe' $CreateTranslationScriptPath $appFolderPath
+        if ($LASTEXITCODE -ne 0) {
+            OutputWarning -message "Translated XLIFF files could not be generated for $appFolderPath (exit code $LASTEXITCODE). The app is built without them."
+        }
+    }
+    $global:LASTEXITCODE = 0
     Write-Host "::endgroup::"
 
     Write-Host "::group::Second compilation: Run-AlPipeline with buildmode $buildMode"
