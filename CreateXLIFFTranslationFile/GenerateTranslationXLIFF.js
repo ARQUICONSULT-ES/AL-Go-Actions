@@ -165,6 +165,24 @@ function onStringParsed(err, result) {
         console.log(
             `Created file: ${appJSON.name}.${currentNewLanguageCode}.g.xlf`
         );
+
+        // Business Central picks the translation file by the user's exact language, so a user in
+        // es-ES_tradnl (Spanish, traditional sort) sees English unless that file exists too. The
+        // texts are the same as es-ES: when the app declares es-ES_tradnl in supportedLocales,
+        // write the es-ES translations again under that language.
+        if (
+            currentNewLanguageCode === 'es-ES' &&
+            Array.isArray(appJSON.supportedLocales) &&
+            appJSON.supportedLocales.some(l => String(l).toLowerCase() === 'es-es_tradnl')
+        ) {
+            clonedResult['xliff']['file'][0]['$']['target-language'] = 'es-ES_tradnl';
+            fs.writeFileSync(
+                path.join(PROJECT_PATH, 'Translations', `${appJSON.name}.es-ES_tradnl.g.xlf`),
+                builder.buildObject(clonedResult),
+                'utf8'
+            );
+            console.log(`Created file: ${appJSON.name}.es-ES_tradnl.g.xlf`);
+        }
     }
 }
 
